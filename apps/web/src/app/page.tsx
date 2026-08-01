@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { RichTextBody } from "@/components/RichTextBody";
 import {
+  fieldMedia,
   fieldString,
   getEntry,
   getSiteSettings,
   listType,
   plainTextExcerpt,
+  plainTextWordTeaser,
 } from "@/lib/cms";
 
 export const dynamic = "force-dynamic";
@@ -17,22 +19,26 @@ export default async function HomePage() {
     servicesPage,
     workPage,
     blogPage,
+    blogsPage,
     testimonialsPage,
     services,
     projects,
     testimonials,
     posts,
+    blogs,
   ] = await Promise.all([
     getEntry("page", "home"),
     getSiteSettings(),
     getEntry("page", "services"),
     getEntry("page", "work"),
     getEntry("page", "blog"),
+    getEntry("page", "blogs"),
     getEntry("page", "testimonials"),
     listType("service"),
     listType("project"),
     listType("testimonial"),
     listType("post", 3),
+    listType("blog", 3),
   ]);
 
   const title = home

@@ -22,6 +22,8 @@ enum FieldType {
   number
   slug
   media
+  relation
+  relations
 }
 
 enum FormFieldType {
@@ -41,6 +43,14 @@ enum WebsiteRole {
   editor
   builder
   admin
+}
+
+/// How entries of a content type relate to site locales.
+enum LocalizationMode {
+  /// Only locales explicitly created for each entry (Add translation).
+  explicit
+  /// Creating an entry also creates draft siblings for every site locale.
+  all_locales
 }
 
 model User {
@@ -65,12 +75,17 @@ model Website {
    * Merged with global CORS_ORIGINS (studio defaults) at runtime.
    */
   allowedOrigins String[]     @default([])
+  /** BCP-47 language-REGION tags enabled for this website, e.g. ["en-US","nl-NL"]. */
+  locales        String[]     @default(["en-US"])
+  /** Must be one of `locales`. Used when public/admin omit ?locale=. */
+  defaultLocale  String       @default("en-US")
   memberships  Membership[]
   contentTypes ContentType[]
   forms        Form[]
   settings     Setting[]
   apiTokens    ApiToken[]
   aiUsageEvents AiUsageEvent[]
+  contentRequestEvents ContentRequestEvent[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -107,16 +122,17 @@ model ApiToken {
 }
 
 model ContentType {
-  id          String            @id @default(cuid())
-  websiteId   String
-  website     Website           @relation(fields: [websiteId], references: [id], onDelete: Cascade)
-  apiId       String
-  name        String
-  description String?
-  fields      FieldDefinition[]
-  entries     Entry[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id               String            @id @default(cuid())
+  websiteId        String
+  website          Website           @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  apiId            String
+  name             String
+  description      String?
+  localizationMode LocalizationMode  @default(explicit)
+  fields           FieldDefinition[]
+  entries          Entry[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@unique([websiteId, apiId])
 }
@@ -130,6 +146,8 @@ model FieldDefinition {
   type          FieldType
   required      Boolean           @default(false)
   sortOrder     Int               @default(0)
+  /** Type-specific config, e.g. { relatedContentTypeApiId: "author" } for relation fields. */
+  settings      Json?
   values        EntryFieldValue[]
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -144,7 +162,7 @@ model Entry {
   contentType   ContentType       @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
   slug          String
   status        EntryStatus       @default(draft)
-  locale        String            @default("en")
+  locale        String            @default("en-US")
   publishedAt   DateTime?
   fieldValues   EntryFieldValue[]
   versions      EntryVersion[]
@@ -202,6 +220,22 @@ model AiUsageEvent {
   promptTokens     Int      @default(0)
   completionTokens Int      @default(0)
   totalTokens      Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([websiteId, createdAt])
+}
+
+/** One successful public content API request (site-key) for page-view metering. */
+model ContentRequestEvent {
+  id               String   @id @default(cuid())
+  websiteId        String
+  website          Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  /** Content type apiId at request time. */
+  contentTypeApiId String
+  /** Entry slug when a single entry was fetched; null for list requests. */
+  entrySlug        String?
+  /** "list" | "get" */
+  kind             String
   createdAt        DateTime @default(now())
 
   @@index([websiteId, createdAt])

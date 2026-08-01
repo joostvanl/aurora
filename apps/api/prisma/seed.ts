@@ -1,4 +1,4 @@
-import { PrismaClient, FieldType, EntryStatus, FormFieldType, type Prisma } from "@prisma/client";
+import { PrismaClient, FieldType, EntryStatus, FormFieldType, Prisma } from "@prisma/client";
 import { createHash, randomBytes, scryptSync } from "node:crypto";
 import dotenv from "dotenv";
 import path from "node:path";
@@ -22,6 +22,10 @@ type FieldSpec = {
   type: FieldType;
   required?: boolean;
   sortOrder: number;
+  settings?: {
+    relatedContentTypeApiId?: string;
+    contentFormat?: "html" | "markdown" | "plain";
+  } | null;
 };
 
 function hashPassword(password: string): string {
@@ -63,6 +67,14 @@ async function ensureDemoWebsite(userId: string) {
       data: {
         name: "Aurora Demo",
         siteKey: DEMO_SITE_KEY,
+        locales: ["en-US", "nl-NL"],
+        defaultLocale: "en-US",
+        allowedOrigins: [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3000",
+          "http://127.0.0.1:3001",
+        ],
       },
     });
   }
@@ -81,7 +93,17 @@ async function ensureDemoWebsite(userId: string) {
     });
     return prisma.website.update({
       where: { id: byKey.id },
-      data: { name: "Aurora Demo" },
+      data: {
+        name: "Aurora Demo",
+        locales: ["en-US", "nl-NL"],
+        defaultLocale: "en-US",
+        allowedOrigins: [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3000",
+          "http://127.0.0.1:3001",
+        ],
+      },
     });
   }
 
@@ -89,6 +111,14 @@ async function ensureDemoWebsite(userId: string) {
     data: {
       name: "Aurora Demo",
       siteKey: DEMO_SITE_KEY,
+      locales: ["en-US", "nl-NL"],
+      defaultLocale: "en-US",
+      allowedOrigins: [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+      ],
       memberships: {
         create: { userId, role: "admin" },
       },
@@ -122,6 +152,9 @@ async function ensureType(
             type: f.type,
             required: f.required ?? false,
             sortOrder: f.sortOrder,
+            ...(f.settings
+              ? { settings: f.settings as object }
+              : {}),
           })),
         },
       },
@@ -146,6 +179,9 @@ async function ensureType(
           type: field.type,
           required: field.required ?? false,
           sortOrder: field.sortOrder,
+          settings: field.settings
+            ? (field.settings as object)
+            : Prisma.JsonNull,
         },
       });
     } else {
@@ -157,6 +193,7 @@ async function ensureType(
           type: field.type,
           required: field.required ?? false,
           sortOrder: field.sortOrder,
+          ...(field.settings ? { settings: field.settings as object } : {}),
         },
       });
     }
@@ -294,7 +331,7 @@ async function upsertEntry(
       contentTypeId_slug_locale: {
         contentTypeId: contentType.id,
         slug,
-        locale: "en",
+        locale: "en-US",
       },
     },
   });
@@ -305,7 +342,7 @@ async function upsertEntry(
         contentTypeId: contentType.id,
         slug,
         status,
-        locale: "en",
+        locale: "en-US",
         publishedAt: status === EntryStatus.published ? new Date() : null,
       },
     });
@@ -477,10 +514,24 @@ async function main() {
     { apiId: "excerpt", name: "Excerpt", type: FieldType.textarea, sortOrder: 2 },
     { apiId: "body", name: "Body", type: FieldType.richtext, required: true, sortOrder: 3 },
     { apiId: "category", name: "Category", type: FieldType.text, sortOrder: 4 },
-    { apiId: "authorSlug", name: "Author slug", type: FieldType.text, sortOrder: 5 },
+    {
+      apiId: "authors",
+      name: "Authors",
+      type: FieldType.relations,
+      sortOrder: 5,
+      settings: { relatedContentTypeApiId: "author" },
+    },
     { apiId: "readingMinutes", name: "Reading minutes", type: FieldType.number, sortOrder: 6 },
     { apiId: "publishedDate", name: "Published Date", type: FieldType.datetime, sortOrder: 7 },
   ]);
+
+  // Drop legacy weak-link field if present from older seeds.
+  await prisma.fieldDefinition.deleteMany({
+    where: {
+      apiId: "authorSlug",
+      contentType: { websiteId: uid, apiId: "post" },
+    },
+  });
 
   await ensureType(uid, "service", "Service", "Services offered", [
     { apiId: "title", name: "Title", type: FieldType.text, required: true, sortOrder: 0 },
@@ -627,6 +678,64 @@ async function main() {
     secondaryCtaHref: "/services",
   });
 
+  // Example Dutch translation of home (explicit mode — created on purpose)
+  {
+    const pageType = await prisma.contentType.findUniqueOrThrow({
+      where: { websiteId_apiId: { websiteId: uid, apiId: "page" } },
+      include: { fields: true },
+    });
+    const fieldMap = new Map(pageType.fields.map((f) => [f.apiId, f]));
+    let nlHome = await prisma.entry.findUnique({
+      where: {
+        contentTypeId_slug_locale: {
+          contentTypeId: pageType.id,
+          slug: "home",
+          locale: "nl-NL",
+        },
+      },
+    });
+    if (!nlHome) {
+      nlHome = await prisma.entry.create({
+        data: {
+          contentTypeId: pageType.id,
+          slug: "home",
+          locale: "nl-NL",
+          status: EntryStatus.published,
+          publishedAt: new Date(),
+        },
+      });
+    }
+    const nlFields: Record<string, unknown> = {
+      title: "Ship frontends. Bewerk content zonder deploys.",
+      slug: "home",
+      eyebrow: "Aurora headless CMS",
+      lead: "Aurora geeft elk account een eigen schema-gedreven CMS: een admin studio voor editors, en een publieke API beveiligd met een site key voor je website of app.",
+      body: "<p>Deze productsite komt uit Aurora’s eigen gepubliceerde entries. Open <a href=\"/docs\">/docs</a> voor de volledige instructies.</p>",
+      seoDescription:
+        "Aurora — headless CMS met multi-tenant websites, publieke content API en documentatie",
+      ctaTitle: "Bouw op Aurora",
+      ctaLead:
+        "Lees de docs, pak de demo site key, en richt je frontend op de publieke API.",
+      secondaryCtaLabel: "Bekijk features",
+      secondaryCtaHref: "/services",
+    };
+    for (const [apiId, value] of Object.entries(nlFields)) {
+      const def = fieldMap.get(apiId);
+      if (!def) continue;
+      await prisma.entryFieldValue.upsert({
+        where: {
+          entryId_fieldId: { entryId: nlHome.id, fieldId: def.id },
+        },
+        create: {
+          entryId: nlHome.id,
+          fieldId: def.id,
+          value: value as Prisma.InputJsonValue,
+        },
+        update: { value: value as Prisma.InputJsonValue },
+      });
+    }
+  }
+
   await upsertEntry(uid, "page", "about", {
     title: "About Aurora",
     slug: "about",
@@ -751,7 +860,7 @@ async function main() {
       "This product site is powered by the same public API you will use — start here.",
     body: "Every section on aurora.local (this demo) is a published CMS entry. Edit copy in the admin studio, publish, and refresh.\n\nFor agents and developers: read /docs next. It covers site keys, FlatEntry shapes, and how to list or fetch content by type apiId and slug.",
     category: "Product",
-    authorSlug: "mira-vale",
+    authors: ["mira-vale"],
     readingMinutes: 3,
     publishedDate: new Date().toISOString(),
   });
@@ -763,7 +872,7 @@ async function main() {
       "Five steps: site key, discover types, fetch entries, read fields, publish checklist.",
     body: "1. Set NEXT_PUBLIC_CMS_API_URL and NEXT_PUBLIC_CMS_SITE_KEY.\n2. GET /api/v1/content-types with header x-site-key.\n3. List entries with GET /api/v1/content-types/{apiId}/entries.\n4. Render entry.fields.title (and other field apiIds) — not top-level properties.\n5. Remember: drafts are invisible on the public API until you publish.\n\nFull detail: /docs/frontend-playbook and /docs/public-api.",
     category: "Guides",
-    authorSlug: "jonas-reed",
+    authors: ["jonas-reed"],
     readingMinutes: 6,
     publishedDate: new Date(Date.now() - 86400000).toISOString(),
   });
@@ -775,7 +884,7 @@ async function main() {
       "Each login owns a CMS. Frontends authenticate with that account’s site key — never with the admin JWT.",
     body: "Registering creates an empty CMS and a unique siteKey. The seeded demo account uses demo-site-key so this product site can load published content.\n\nAdmin studio uses Bearer JWT. Public sites use x-site-key. Mixing them up is the most common integration mistake — see /docs/multi-tenancy.",
     category: "Architecture",
-    authorSlug: "jonas-reed",
+    authors: ["jonas-reed", "mira-vale"],
     readingMinutes: 5,
     publishedDate: new Date(Date.now() - 172800000).toISOString(),
   });
@@ -787,7 +896,7 @@ async function main() {
       "Define types as data so editors can grow the model without shipping a migration for every page shape.",
     body: "Content types and field definitions live in the database. Discover them at runtime via the public content-types endpoint, then fetch entries.\n\nThis product site’s Features, Use cases, Guides, and FAQ are all separate types — the same pattern you will use in your own frontend.",
     category: "Architecture",
-    authorSlug: "mira-vale",
+    authors: ["mira-vale"],
     readingMinutes: 5,
     publishedDate: new Date(Date.now() - 259200000).toISOString(),
   });

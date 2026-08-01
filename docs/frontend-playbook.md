@@ -8,15 +8,21 @@ If you are a **site-building agent** creating both the content model and the fro
 
 ## 1. Prerequisites
 
-- API running (`http://localhost:4000`)
+- API running locally (`http://localhost:4000`) or production (`https://aurora-api.joostvanleeuwaarden.com`)
 - A tenant with published content (seed demo, your account, or provisioned model)
 - That tenant’s **`siteKey`**
+- Local frontends: localhost / 127.0.0.1 any port are CORS-allowed out of the box
 
 ## 2. Configure env
 
 ```bash
+# Local
 NEXT_PUBLIC_CMS_API_URL=http://localhost:4000
 NEXT_PUBLIC_CMS_SITE_KEY=demo-site-key
+
+# Production demo
+# NEXT_PUBLIC_CMS_API_URL=https://aurora-api.joostvanleeuwaarden.com
+# NEXT_PUBLIC_CMS_SITE_KEY=demo-site-key
 ```
 
 For write access in CI/agents (never in the browser):
@@ -32,18 +38,23 @@ GET /api/v1/content-types
 x-site-key: …
 ```
 
-Note each type’s `apiId` and field `apiId`s. Do not invent field names.
+Note each type’s `apiId`, field `apiId`s, and `settings.contentFormat`. Do not invent field names.
+
+Optional: `GET /api/v1/content-types/:apiId/schema.json` or `GET /api/v1/openapi.json`.
 
 ## 4. Fetch patterns
 
 | Need | Call |
 |------|------|
-| Global chrome | `site_settings` → `default`; `nav_item` list (`limit=50`), sort by `sortOrder` |
+| Chrome + home (one call) | `GET /api/v1/bootstrap` |
+| Global chrome | `site_settings` → `default`; `nav_item` list `?limit=50&sort=sortOrder&order=asc` |
 | Landing | `page` → `home` |
-| Collection | `GET .../{type}/entries?limit=50` |
+| Collection | `GET .../{type}/entries?limit=50&sort=sortOrder` (when type has sortOrder) |
 | Detail | `GET .../{type}/entries/{slug}` |
 
-Always read copy from `entry.fields.<apiId>`.
+Always read copy from `entry.fields.<apiId>`. Render richtext as **HTML**; markdown only when `contentFormat` is `markdown`.
+
+Canonical starter: [`examples/minimal-frontend/index.html`](../examples/minimal-frontend/index.html).
 
 ## 5. Routing convention (this product site)
 
@@ -53,10 +64,11 @@ Always read copy from `entry.fields.<apiId>`.
 | `/docs`, `/docs/[slug]` | `doc` entries (Markdown `body`) |
 | `/services`, `/services/[slug]` | `service` |
 | `/work`, `/work/[slug]` | `project` |
-| `/blog`, `/blog/[slug]` | `post` |
+| `/blog`, `/blog/[slug]` | `post` (guides) |
+| `/blogs`, `/blogs/[slug]` | `blog` (articles) |
 | `/team`, `/team/[slug]` | `team_member` |
 | `/faq` | `faq` |
-| `/about`, `/contact` | `page` |
+| `/pricing`, `/about`, `/contact` | `page` |
 | `/[slug]` | fallback `page` by slug |
 
 You may invent different routes; keep API ids stable.

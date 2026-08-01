@@ -24,7 +24,7 @@ export default async function BlogArticlePage({ params }: Props) {
   const date = post.publishedAt ?? post.createdAt;
   const image = fieldMedia(post, "image");
   const title = fieldString(post, "title", slug);
-  const imageAlt = image?.alt?.trim() || `Illustratie bij ${title}`;
+  const imageAlt = image?.alt?.trim() || title;
 
   return (
     <article className="prose">

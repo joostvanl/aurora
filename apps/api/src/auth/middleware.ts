@@ -93,6 +93,7 @@ export async function requireSiteKey(
   if (typeof siteKey !== "string" || !siteKey.trim()) {
     return reply.status(401).send({
       message: "Missing x-site-key header (public site key for this website)",
+      code: "SITE_KEY_MISSING",
     });
   }
 
@@ -101,7 +102,10 @@ export async function requireSiteKey(
     select: { id: true },
   });
   if (!website) {
-    return reply.status(401).send({ message: "Invalid site key" });
+    return reply.status(401).send({
+      message: "Invalid site key",
+      code: "SITE_KEY_INVALID",
+    });
   }
   request.siteWebsiteId = website.id;
 }

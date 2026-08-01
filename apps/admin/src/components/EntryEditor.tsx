@@ -1,6 +1,7 @@
 "use client";
 
-import type { ContentType, FieldDefinition, FlatEntry } from "@cms/shared";
+import type { ContentType, FieldDefinition, FlatEntry, WebsiteDetails } from "@cms/shared";
+import { flagEmoji } from "@cms/shared";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getBrowserAdminClient } from "@/lib/auth";
@@ -19,6 +20,10 @@ function fieldDefault(type: FieldDefinition["type"]): unknown {
       return false;
     case "number":
       return 0;
+    case "relations":
+      return [];
+    case "relation":
+      return "";
     default:
       return "";
   }
@@ -35,6 +40,16 @@ function valuesFromEntry(
   return initial;
 }
 
+function isSlugField(field: FieldDefinition): boolean {
+  return field.apiId === "slug" || field.type === "slug";
+}
+
+function fieldsInOrder(contentType: ContentType): FieldDefinition[] {
+  return [...(contentType.fields ?? [])].sort(
+    (a, b) => a.sortOrder - b.sortOrder,
+  );
+}
+
 export function EntryEditor({
   contentType,
   entry,
@@ -44,32 +59,73 @@ export function EntryEditor({
 }) {
   const router = useRouter();
   const { setHints } = useAiScreen();
-  const fields = contentType.fields ?? [];
+  const [schema, setSchema] = useState(contentType);
+  const fields = useMemo(() => fieldsInOrder(schema), [schema]);
   const [current, setCurrent] = useState<FlatEntry | undefined>(entry);
   const [slug, setSlug] = useState(entry?.slug ?? "");
+  const [locale, setLocale] = useState(entry?.locale ?? "");
+  const [website, setWebsite] = useState<WebsiteDetails | null>(null);
+  const [siblings, setSiblings] = useState<FlatEntry[]>([]);
+  const [addLocale, setAddLocale] = useState("");
   const [values, setValues] = useState<Record<string, unknown>>(() =>
-    valuesFromEntry(fields, entry),
+    valuesFromEntry(fieldsInOrder(contentType), entry),
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [versionsKey, setVersionsKey] = useState(0);
 
   useEffect(() => {
+    setSchema(contentType);
+  }, [contentType]);
+
+  // Keep field order in sync after content-type reorders (client navigate / soft cache).
+  useEffect(() => {
+    getBrowserAdminClient()
+      .getContentType(contentType.apiId)
+      .then(setSchema)
+      .catch(() => {
+        /* keep server-provided schema */
+      });
+  }, [contentType.apiId]);
+
+  useEffect(() => {
+    getBrowserAdminClient()
+      .getWebsite()
+      .then((w) => {
+        setWebsite(w);
+        if (!entry?.locale) setLocale(w.defaultLocale);
+      })
+      .catch(() => {});
+  }, [entry?.locale]);
+
+  useEffect(() => {
     setCurrent(entry);
     setSlug(entry?.slug ?? "");
-    setValues(valuesFromEntry(fields, entry));
-  }, [entry?.id, entry?.updatedAt, contentType.apiId, fields]);
+    if (entry?.locale) setLocale(entry.locale);
+    setValues(valuesFromEntry(fieldsInOrder(contentType), entry));
+  }, [entry, contentType]);
+
+  useEffect(() => {
+    if (!current?.slug) {
+      setSiblings([]);
+      return;
+    }
+    getBrowserAdminClient()
+      .listAdminEntries(contentType.apiId, { slug: current.slug, limit: 50 })
+      .then((res) => setSiblings(res.items))
+      .catch(() => setSiblings([]));
+  }, [current?.slug, current?.id, contentType.apiId]);
 
   useEffect(() => {
     setHints({
       page: current
-        ? `Entry editor · ${current.slug}`
-        : `New ${contentType.name}`,
-      contentTypeApiId: contentType.apiId,
+        ? `Entry editor · ${current.slug} · ${current.locale}`
+        : `New ${schema.name}`,
+      contentTypeApiId: schema.apiId,
       entryId: current?.id,
     });
     return () => setHints(null);
-  }, [setHints, contentType.apiId, contentType.name, current?.id, current?.slug]);
+  }, [setHints, schema.apiId, schema.name, current?.id, current?.slug, current?.locale]);
 
   useEffect(() => {
     return onAiEntryUpdated((detail) => {
@@ -81,13 +137,16 @@ export function EntryEditor({
 
   useEffect(() => {
     return onAiStudioMutated(() => {
+      const client = getBrowserAdminClient();
+      void client.getContentType(contentType.apiId).then(setSchema).catch(() => {});
       const entryId = current?.id;
       if (!entryId) return;
-      getBrowserAdminClient()
+      client
         .getAdminEntry(contentType.apiId, entryId)
         .then((fresh) => {
           setCurrent(fresh);
           setSlug(fresh.slug);
+          setLocale(fresh.locale);
           setValues(valuesFromEntry(fields, fresh));
           setVersionsKey((k) => k + 1);
         })
@@ -100,14 +159,26 @@ export function EntryEditor({
   function applyEntry(next: FlatEntry) {
     setCurrent(next);
     setSlug(next.slug);
+    setLocale(next.locale);
     setValues(valuesFromEntry(fields, next));
     setVersionsKey((k) => k + 1);
   }
 
   const title = useMemo(
-    () => (current ? `Edit ${current.slug}` : `New ${contentType.name}`),
-    [current, contentType.name],
+    () =>
+      current
+        ? `Edit ${current.slug} (${flagEmoji(current.locale)} ${current.locale})`
+        : `New ${schema.name}`,
+    [current, schema.name],
   );
+
+  const hasSlugInSchema = fields.some(isSlugField);
+
+  const missingLocales = useMemo(() => {
+    if (!website) return [];
+    const present = new Set(siblings.map((s) => s.locale));
+    return website.locales.filter((l) => !present.has(l));
+  }, [website, siblings]);
 
   function setField(apiId: string, value: unknown) {
     setValues((prev) => ({ ...prev, [apiId]: value }));
@@ -133,6 +204,7 @@ export function EntryEditor({
       } else {
         saved = await client.createEntry(contentType.apiId, {
           slug,
+          locale: locale || undefined,
           fields: values,
           status: asPublish ? "published" : "draft",
         });
@@ -143,6 +215,25 @@ export function EntryEditor({
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function addTranslation() {
+    if (!current || !addLocale) return;
+    setPending(true);
+    setError(null);
+    try {
+      const created = await getBrowserAdminClient().createTranslation(
+        contentType.apiId,
+        current.id,
+        { locale: addLocale },
+      );
+      router.push(`/entries/${contentType.apiId}/${created.id}`);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add translation");
     } finally {
       setPending(false);
     }
@@ -200,6 +291,57 @@ export function EntryEditor({
         )}
       />
 
+      {current ? (
+        <div className="actions" style={{ marginBottom: "1rem", flexWrap: "wrap" }}>
+          {siblings.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`btn btn-secondary${s.id === current.id ? "" : ""}`}
+              style={
+                s.id === current.id
+                  ? { outline: "2px solid var(--accent, #2bb8b0)" }
+                  : undefined
+              }
+              onClick={() => {
+                if (s.id !== current.id) {
+                  router.push(`/entries/${contentType.apiId}/${s.id}`);
+                }
+              }}
+            >
+              {flagEmoji(s.locale)} {s.locale}
+              <span className="muted" style={{ marginLeft: "0.35rem" }}>
+                {s.status}
+              </span>
+            </button>
+          ))}
+          {missingLocales.length > 0 && (
+            <>
+              <select
+                value={addLocale}
+                onChange={(e) => setAddLocale(e.target.value)}
+                disabled={pending}
+              >
+                <option value="">Add translation…</option>
+                {missingLocales.map((code) => (
+                  <option key={code} value={code}>
+                    {flagEmoji(code)} {code}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={pending || !addLocale}
+                onClick={() => void addTranslation()}
+              >
+                Add translation
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
       <div className="panel">
         <form
           className="form"
@@ -208,20 +350,53 @@ export function EntryEditor({
             void save(false);
           }}
         >
-          <div className="field">
-            <label htmlFor="slug">Slug</label>
-            <input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
-              required
-            />
-          </div>
+          {!current && website && (
+            <div className="field">
+              <label htmlFor="locale">Locale</label>
+              <select
+                id="locale"
+                value={locale}
+                onChange={(e) => setLocale(e.target.value)}
+                required
+              >
+                {website.locales.map((code) => (
+                  <option key={code} value={code}>
+                    {flagEmoji(code)} {code} — {code === website.defaultLocale ? "default" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {fields
-            .filter((f) => f.apiId !== "slug")
-            .map((f) => (
+          {!hasSlugInSchema && (
+            <div className="field">
+              <label htmlFor="slug">Slug</label>
+              <input
+                id="slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                required
+              />
+            </div>
+          )}
+
+          {fields.map((f) =>
+            isSlugField(f) ? (
+              <div className="field" key={f.id}>
+                <label htmlFor="slug">
+                  {f.name}
+                  {f.required ? " *" : ""}
+                </label>
+                <input
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  required
+                />
+              </div>
+            ) : (
               <div className="field" key={f.id}>
                 <label htmlFor={f.apiId}>
                   {f.name}
@@ -233,7 +408,8 @@ export function EntryEditor({
                   onChange={(v) => setField(f.apiId, v)}
                 />
               </div>
-            ))}
+            ),
+          )}
 
           {error && <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p>}
 
@@ -351,8 +527,34 @@ function FieldInput({
       return (
         <MediaFieldInput
           id={field.apiId}
-          value={String(value ?? "")}
+          value={value}
           onChange={(v) => onChange(v)}
+          required={field.required}
+        />
+      );
+    case "relation":
+      return (
+        <RelationFieldInput
+          id={field.apiId}
+          relatedContentTypeApiId={
+            field.settings?.relatedContentTypeApiId ?? ""
+          }
+          multiple={false}
+          value={typeof value === "string" ? value : ""}
+          onChange={onChange}
+          required={field.required}
+        />
+      );
+    case "relations":
+      return (
+        <RelationFieldInput
+          id={field.apiId}
+          relatedContentTypeApiId={
+            field.settings?.relatedContentTypeApiId ?? ""
+          }
+          multiple
+          value={Array.isArray(value) ? value.filter((v) => typeof v === "string") : []}
+          onChange={onChange}
           required={field.required}
         />
       );
@@ -368,6 +570,182 @@ function FieldInput({
   }
 }
 
+function RelationFieldInput({
+  id,
+  relatedContentTypeApiId,
+  multiple,
+  value,
+  onChange,
+  required,
+}: {
+  id: string;
+  relatedContentTypeApiId: string;
+  multiple: boolean;
+  value: string | string[];
+  onChange: (v: unknown) => void;
+  required?: boolean;
+}) {
+  const [options, setOptions] = useState<FlatEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!relatedContentTypeApiId) {
+      setOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    void (async () => {
+      try {
+        const client = getBrowserAdminClient();
+        const items: FlatEntry[] = [];
+        let offset = 0;
+        const pageSize = 100;
+        for (;;) {
+          const page = await client.listAdminEntries(relatedContentTypeApiId, {
+            limit: pageSize,
+            offset,
+          });
+          items.push(...page.items);
+          offset += page.items.length;
+          if (page.items.length < pageSize || offset >= page.total) break;
+        }
+        if (!cancelled) setOptions(items);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(
+            err instanceof Error ? err.message : "Failed to load related entries",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [relatedContentTypeApiId]);
+
+  function labelFor(entry: FlatEntry): string {
+    const title =
+      typeof entry.fields.title === "string"
+        ? entry.fields.title
+        : typeof entry.fields.name === "string"
+          ? entry.fields.name
+          : null;
+    return title && title !== entry.slug
+      ? `${title} (${entry.slug})`
+      : entry.slug;
+  }
+
+  if (!relatedContentTypeApiId) {
+    return (
+      <p className="muted" style={{ margin: 0 }}>
+        This relation field has no related content type configured.
+      </p>
+    );
+  }
+
+  if (multiple) {
+    const selected = new Set(Array.isArray(value) ? value : []);
+    return (
+      <div id={id} style={{ display: "grid", gap: "0.35rem" }}>
+        {loading && <span className="muted">Loading entries…</span>}
+        {loadError && (
+          <span style={{ color: "var(--danger)" }}>{loadError}</span>
+        )}
+        {!loading && options.length === 0 && (
+          <span className="muted">No entries in {relatedContentTypeApiId}.</span>
+        )}
+        {options.map((entry) => (
+          <label
+            key={entry.id}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(entry.slug)}
+              onChange={() => {
+                const next = new Set(selected);
+                if (next.has(entry.slug)) next.delete(entry.slug);
+                else next.add(entry.slug);
+                // Preserve option order
+                onChange(
+                  options
+                    .map((o) => o.slug)
+                    .filter((slug) => next.has(slug)),
+                );
+              }}
+            />
+            <span>
+              {labelFor(entry)}{" "}
+              <span className="muted">{entry.status}</span>
+            </span>
+          </label>
+        ))}
+        {required && selected.size === 0 ? (
+          <input
+            tabIndex={-1}
+            value=""
+            required
+            onChange={() => undefined}
+            style={{
+              position: "absolute",
+              opacity: 0,
+              height: 0,
+              width: 0,
+              pointerEvents: "none",
+            }}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <select
+        id={id}
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        disabled={loading}
+      >
+        <option value="">{loading ? "Loading…" : "— Select —"}</option>
+        {options.map((entry) => (
+          <option key={entry.id} value={entry.slug}>
+            {labelFor(entry)} ({entry.status})
+          </option>
+        ))}
+      </select>
+      {loadError && (
+        <p style={{ color: "var(--danger)", margin: "0.35rem 0 0" }}>
+          {loadError}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function mediaUrl(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const url = (value as { url?: unknown }).url;
+    return typeof url === "string" ? url : "";
+  }
+  return "";
+}
+
+function mediaAlt(value: unknown): string {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const alt = (value as { alt?: unknown }).alt;
+    return typeof alt === "string" ? alt : "";
+  }
+  return "";
+}
+
 function MediaFieldInput({
   id,
   value,
@@ -375,12 +753,29 @@ function MediaFieldInput({
   required,
 }: {
   id: string;
-  value: string;
-  onChange: (v: string) => void;
+  value: unknown;
+  onChange: (v: unknown) => void;
   required?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const url = mediaUrl(value);
+  const alt = mediaAlt(value);
+
+  function emit(nextUrl: string, nextAlt: string, extra?: Record<string, unknown>) {
+    if (!nextUrl.trim()) {
+      onChange("");
+      return;
+    }
+    onChange({
+      url: nextUrl.trim(),
+      alt: nextAlt,
+      width: null,
+      height: null,
+      mimeType: extra?.mimeType ?? null,
+      ...extra,
+    });
+  }
 
   async function onFileSelected(file: File | undefined) {
     if (!file) return;
@@ -388,7 +783,9 @@ function MediaFieldInput({
     setUploadError(null);
     try {
       const result = await getBrowserAdminClient().uploadMedia(file, file.name);
-      onChange(result.url);
+      emit(result.url, alt || file.name, {
+        mimeType: result.mimeType ?? null,
+      });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -398,10 +795,9 @@ function MediaFieldInput({
 
   return (
     <div className="media-field">
-      {value ? (
+      {url ? (
         <div className="media-field-preview">
-          {/* Preview uses absolute API URLs outside Next image config */}
-          <img src={value} alt="" />
+          <img src={url} alt={alt} />
         </div>
       ) : null}
       <input
@@ -416,14 +812,21 @@ function MediaFieldInput({
       />
       <input
         type="url"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={url}
+        onChange={(e) => emit(e.target.value, alt)}
         placeholder="Or paste image URL"
         required={required}
         disabled={uploading}
       />
+      <input
+        type="text"
+        value={alt}
+        onChange={(e) => emit(url, e.target.value)}
+        placeholder="Alt text"
+        disabled={uploading || !url}
+      />
       <div className="media-field-actions">
-        {value ? (
+        {url ? (
           <button
             type="button"
             className="btn btn-secondary"

@@ -58,4 +58,4 @@ You have succeeded when your site:
 2. Renders only published content (automatic if you use the public API).
 3. Reads values from `entry.fields.<fieldApiId>`.
 4. Handles missing types/entries gracefully (empty account or unpublished content → empty UI, not crashes).
-5. Sorts navigations/collections client-side when `sortOrder` is present.
+5. Prefers `?sort=sortOrder` on lists (nav, FAQ, docs); falls back to client sort only if needed.

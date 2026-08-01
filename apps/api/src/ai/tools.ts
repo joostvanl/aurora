@@ -169,10 +169,17 @@ export const aiTools: ChatTool[] = [
               "number",
               "slug",
               "media",
+              "relation",
+              "relations",
             ],
           },
           required: { type: "boolean" },
           sortOrder: { type: "number" },
+          relatedContentTypeApiId: {
+            type: "string",
+            description:
+              "Required when type is relation or relations — apiId of the related content type",
+          },
         },
         required: ["contentTypeApiId", "apiId", "name", "type"],
         additionalProperties: false,
@@ -201,10 +208,17 @@ export const aiTools: ChatTool[] = [
               "number",
               "slug",
               "media",
+              "relation",
+              "relations",
             ],
           },
           required: { type: "boolean" },
           sortOrder: { type: "number" },
+          relatedContentTypeApiId: {
+            type: "string",
+            description:
+              "For relation/relations fields — apiId of the related content type",
+          },
         },
         required: ["contentTypeApiId", "fieldApiId"],
         additionalProperties: false,
@@ -788,6 +802,15 @@ export async function executeAiTool(
         if (!contentTypeApiId || !apiId || !fieldName || !type) {
           throw new Error("contentTypeApiId, apiId, name, type required");
         }
+        const relatedContentTypeApiId = str(rawArgs, "relatedContentTypeApiId");
+        if (
+          (type === "relation" || type === "relations") &&
+          !relatedContentTypeApiId
+        ) {
+          throw new Error(
+            "relatedContentTypeApiId is required for relation and relations fields",
+          );
+        }
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
         const maxOrder = ct.fields.reduce((m, f) => Math.max(m, f.sortOrder), -1);
         await prisma.fieldDefinition.create({
@@ -798,6 +821,9 @@ export async function executeAiTool(
             type,
             required: bool(rawArgs, "required") ?? false,
             sortOrder: num(rawArgs, "sortOrder") ?? maxOrder + 1,
+            ...(relatedContentTypeApiId
+              ? { settings: { relatedContentTypeApiId } }
+              : {}),
           },
         });
         const updated = await getContentTypeOrThrow(contentTypeApiId, websiteId);
@@ -817,6 +843,7 @@ export async function executeAiTool(
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
         const field = ct.fields.find((f) => f.apiId === fieldApiId);
         if (!field) throw new Error("Field not found");
+        const relatedContentTypeApiId = str(rawArgs, "relatedContentTypeApiId");
         await prisma.fieldDefinition.update({
           where: { id: field.id },
           data: {
@@ -829,6 +856,9 @@ export async function executeAiTool(
               : {}),
             ...(num(rawArgs, "sortOrder") !== undefined
               ? { sortOrder: num(rawArgs, "sortOrder") }
+              : {}),
+            ...(relatedContentTypeApiId
+              ? { settings: { relatedContentTypeApiId } }
               : {}),
           },
         });

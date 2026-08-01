@@ -15,9 +15,9 @@ type DashboardState = {
   apiOk: boolean;
   aiEnabled: boolean;
   websiteName: string;
-  websiteId: string;
   seatCount: number;
   canManageMembers: boolean;
+  pageViews: number;
   aiTokens: number;
   aiCostPerTokenEur: number;
   aiEstimatedCostEur: number;
@@ -30,9 +30,9 @@ const INITIAL_STATE: DashboardState = {
   apiOk: false,
   aiEnabled: false,
   websiteName: "This website",
-  websiteId: "unknown",
   seatCount: 1,
   canManageMembers: false,
+  pageViews: 0,
   aiTokens: 0,
   aiCostPerTokenEur: 0,
   aiEstimatedCostEur: 0,
@@ -56,11 +56,12 @@ export function DashboardOverview() {
 
       try {
         await client.health();
-        const [types, pages, posts, ai, me] = await Promise.all([
+        const [types, pages, posts, ai, contentUsage, me] = await Promise.all([
           client.listAdminContentTypes(),
           client.listAdminEntries("page", { limit: 1 }).catch(() => ({ total: 0 })),
           client.listAdminEntries("post", { limit: 1 }).catch(() => ({ total: 0 })),
           client.getAiStatus(),
+          client.getContentRequestUsage().catch(() => ({ pageViews: 0 })),
           client.me(),
         ]);
 
@@ -83,9 +84,9 @@ export function DashboardOverview() {
             apiOk: true,
             aiEnabled: ai.enabled,
             websiteName: me.user.websiteName ?? "This website",
-            websiteId: me.user.websiteId ?? "unknown",
             seatCount,
             canManageMembers,
+            pageViews: contentUsage.pageViews ?? 0,
             aiTokens: ai.usage?.totalTokens ?? 0,
             aiCostPerTokenEur: ai.costPerTokenEur ?? 0,
             aiEstimatedCostEur: ai.usage?.estimatedCostEur ?? 0,
@@ -121,8 +122,8 @@ export function DashboardOverview() {
 
   const costs = state.apiOk
     ? buildWebsiteCostBreakdown({
-        websiteId: state.websiteId,
         seatCount: state.seatCount,
+        pageViews: state.pageViews,
         aiTokens: state.aiTokens,
         aiCostPerTokenEur: state.aiCostPerTokenEur,
         aiEstimatedCostEur: state.aiEstimatedCostEur,
@@ -210,7 +211,7 @@ export function DashboardOverview() {
                 </h2>
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                   Estimated monthly bill for <strong>{state.websiteName}</strong>{" "}
-                  — website + seats + page views + metered AI tokens.
+                  — website + seats + metered content requests + AI tokens.
                 </p>
               </div>
               <div style={{ textAlign: "right" }}>

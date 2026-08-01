@@ -37,9 +37,22 @@ Returns the form schema when `enabled` is true. 404 otherwise.
 }
 ```
 
-- Unknown keys → `400`
-- Required / type validation server-side
-- Rate limit: ~10 submits / minute / siteKey+IP
+- Unknown keys → `400` + `VALIDATION_FAILED` + `issues[]`
+- Required / type / option errors → same shape:
+
+```json
+{
+  "message": "Field \"email\" is required",
+  "code": "VALIDATION_FAILED",
+  "issues": [
+    { "path": ["email"], "code": "required", "message": "Field \"email\" is required" }
+  ]
+}
+```
+
+- Select/radio `options` are always `[{ "value", "label" }]`
+- Filled honeypot → `400` (opaque)
+- Rate limit → `429` + `RATE_LIMITED` (10 / minute / siteKey+IP)
 - Response: `{ "ok": true, "message": "<successMessage>" }`
 
 ---

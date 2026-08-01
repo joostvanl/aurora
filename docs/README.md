@@ -27,7 +27,7 @@ These files are seeded into the CMS as content type **`doc`** and published on t
 1. Public frontends use **`x-site-key`**, never management tokens.
 2. Public API returns **published** entries only.
 3. Values live in **`entry.fields.<fieldApiId>`**.
-4. Sort by `fields.sortOrder` yourself when present.
+4. Prefer `?sort=sortOrder&order=asc` on list endpoints when a `sortOrder` field exists (nav, FAQ, docs, services).
 5. Each login is a separate CMS; wrong site key → wrong/empty content.
 6. Site-building agents configure types/content via the **[Management API](./management-api.md)** (`Bearer aur_…` or JWT) — never with the site key.
 

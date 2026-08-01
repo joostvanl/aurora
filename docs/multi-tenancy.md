@@ -31,7 +31,7 @@ Keep **tenant / studio** data on the Prisma `Website` row. Keep **public brand c
 | **Id / timestamps** | `Website` | Read-only | Diagnostics |
 | Tagline, CTA, contact, social, footer | `site_settings` entry | Via Entries | Public site chrome |
 
-**Out of scope for now** (add later if needed): default locale/timezone, archived flag, billing plan.
+**Locales:** website `locales` + `defaultLocale` (BCP-47 language-REGION). Configure in Admin → Website. Archived flag / billing plan still out of scope.
 
 Studio UI: **Website** (`/website`). API: `GET|PATCH /api/v1/admin/website` (admin role). Patch body may include `allowedOrigins: string[]`.
 

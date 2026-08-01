@@ -63,12 +63,56 @@ export const CreateWebsiteInputSchema = z.object({
 
 export type CreateWebsiteInput = z.infer<typeof CreateWebsiteInputSchema>;
 
-export const UpdateWebsiteInputSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  description: z.union([z.string().max(2000), z.literal("")]).optional(),
-  /** Browser origins allowed for CORS for this website (e.g. frontend URL). */
-  allowedOrigins: z.array(z.string().max(500)).max(50).optional(),
-});
+export const UpdateWebsiteInputSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    description: z.union([z.string().max(2000), z.literal("")]).optional(),
+    /** Browser origins allowed for CORS for this website (e.g. frontend URL). */
+    allowedOrigins: z.array(z.string().max(500)).max(50).optional(),
+    /** BCP-47 language-REGION tags enabled for this website. */
+    locales: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^[a-z]{2}-[A-Z]{2}$/,
+            "locale must be language-REGION (e.g. en-US)",
+          ),
+      )
+      .min(1)
+      .max(50)
+      .optional(),
+    defaultLocale: z
+      .string()
+      .regex(
+        /^[a-z]{2}-[A-Z]{2}$/,
+        "locale must be language-REGION (e.g. en-US)",
+      )
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.locales) {
+      const unique = new Set(data.locales);
+      if (unique.size !== data.locales.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "locales must be unique",
+          path: ["locales"],
+        });
+      }
+    }
+    if (
+      data.defaultLocale &&
+      data.locales &&
+      !data.locales.includes(data.defaultLocale)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "defaultLocale must be included in locales",
+        path: ["defaultLocale"],
+      });
+    }
+  });
 
 export type UpdateWebsiteInput = z.input<typeof UpdateWebsiteInputSchema>;
 
@@ -78,6 +122,8 @@ export const WebsiteDetailsSchema = z.object({
   description: z.string().nullable(),
   siteKey: z.string(),
   allowedOrigins: z.array(z.string()),
+  locales: z.array(z.string()),
+  defaultLocale: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

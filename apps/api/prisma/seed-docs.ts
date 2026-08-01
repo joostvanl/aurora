@@ -153,6 +153,7 @@ async function ensureDocType(websiteId: string) {
       type: FieldType.textarea,
       required: true,
       sortOrder: 3,
+      settings: { contentFormat: "markdown" as const },
     },
     {
       apiId: "sortOrder",
@@ -170,7 +171,18 @@ async function ensureDocType(websiteId: string) {
         apiId: "doc",
         name: "Documentation",
         description: "Product docs served at /docs (Markdown body)",
-        fields: { create: fields },
+        fields: {
+          create: fields.map((f) => ({
+            apiId: f.apiId,
+            name: f.name,
+            type: f.type,
+            required: f.required,
+            sortOrder: f.sortOrder,
+            ...("settings" in f && f.settings
+              ? { settings: f.settings as object }
+              : {}),
+          })),
+        },
       },
       include: { fields: true },
     });
@@ -196,6 +208,10 @@ async function ensureDocType(websiteId: string) {
           type: field.type,
           required: field.required,
           sortOrder: field.sortOrder,
+          settings:
+            "settings" in field && field.settings
+              ? (field.settings as object)
+              : Prisma.JsonNull,
         },
       });
     } else {
@@ -207,6 +223,9 @@ async function ensureDocType(websiteId: string) {
           type: field.type,
           required: field.required,
           sortOrder: field.sortOrder,
+          ...("settings" in field && field.settings
+            ? { settings: field.settings as object }
+            : {}),
         },
       });
     }
@@ -234,7 +253,7 @@ async function upsertDocEntry(
       contentTypeId_slug_locale: {
         contentTypeId: contentType.id,
         slug,
-        locale: "en",
+        locale: "en-US",
       },
     },
   });
@@ -245,7 +264,7 @@ async function upsertDocEntry(
         contentTypeId: contentType.id,
         slug,
         status: EntryStatus.published,
-        locale: "en",
+        locale: "en-US",
         publishedAt: new Date(),
       },
     });

@@ -150,9 +150,9 @@ All require `Authorization: Bearer <jwt|aur_…>` and are **tenant-scoped**.
 | Method | Path | Body |
 |--------|------|------|
 | GET | `/api/v1/admin/website` | — |
-| PATCH | `/api/v1/admin/website` | `{ name?, description?, allowedOrigins? }` |
+| PATCH | `/api/v1/admin/website` | `{ name?, description?, allowedOrigins?, locales?, defaultLocale? }` |
 
-Returns website details (`id`, `name`, `description`, `siteKey`, `allowedOrigins`, timestamps). `allowedOrigins` is the list of browser origins allowed for CORS for this website’s frontends (merged with global `CORS_ORIGINS` at runtime). PATCH with a JWT also returns a refreshed `{ token, user, websites }` so `websiteName` stays in sync. `siteKey` is not writable.
+Returns website details (`id`, `name`, `description`, `siteKey`, `allowedOrigins`, `locales`, `defaultLocale`, timestamps). `locales` are BCP-47 language-REGION tags. Removing a locale that still has entries returns `409 LOCALE_IN_USE`. `allowedOrigins` is the list of browser origins allowed for CORS for this website’s frontends (merged with global `CORS_ORIGINS` at runtime). PATCH with a JWT also returns a refreshed `{ token, user, websites }` so `websiteName` stays in sync. `siteKey` is not writable.
 
 ### Content types
 
@@ -188,7 +188,9 @@ Response: `{ url, filename, mimeType, size }`. Store `url` in a `media` entry fi
 |--------|------|------|
 | GET | `.../entries` | Query: `limit`, `offset`, `slug`, `status` |
 | GET | `.../entries/by-id/:entryId` | By id |
-| POST | `.../entries` | `{ slug, locale?, status?, fields? }` — default status `draft` |
+| POST | `.../entries` | `{ slug, locale?, status?, fields? }` — default status `draft`; locale defaults to website `defaultLocale` |
+| POST | `.../entries/:entryId/translations` | `{ locale }` — copy fields as draft translation |
+| POST | `.../sync-locales` | `{ dryRun? }` — for `all_locales` types: create missing locale stubs |
 | PATCH | `.../entries/:entryId` | Partial update |
 | DELETE | `.../entries/:entryId` | — |
 | POST | `.../entries/:entryId/publish` | Public visibility |

@@ -33,6 +33,7 @@ function fieldLine(f: {
   name: string;
   type: string;
   required: boolean;
+  settings?: { relatedContentTypeApiId?: string } | null;
 }): string {
   const req = f.required ? ", required" : ", optional";
   if (f.type === "media") {
@@ -40,6 +41,14 @@ function fieldLine(f: {
   }
   if (f.type === "richtext") {
     return `- \`${f.apiId}\` (richtext${req}) — ${f.name}; HTML string (render as HTML, not Markdown)`;
+  }
+  if (f.type === "relation") {
+    const target = f.settings?.relatedContentTypeApiId ?? "relatedType";
+    return `- \`${f.apiId}\` (relation${req}) — ${f.name}; single related **slug** string for content type \`${target}\`. Resolve with GET …/content-types/${target}/entries/{slug}.`;
+  }
+  if (f.type === "relations") {
+    const target = f.settings?.relatedContentTypeApiId ?? "relatedType";
+    return `- \`${f.apiId}\` (relations${req}) — ${f.name}; **string[]** of related slugs for content type \`${target}\`. Resolve each slug with a separate fetch.`;
   }
   return `- \`${f.apiId}\` (${f.type}${req}) — ${f.name}`;
 }

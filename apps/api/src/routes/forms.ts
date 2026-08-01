@@ -20,12 +20,7 @@ import {
 } from "../auth/middleware.js";
 import { roleAtLeast } from "../auth/roles.js";
 import { serializeForm, serializeFormSubmission, getFormOrThrow, formInclude } from "../lib/forms.js";
-
-function httpError(statusCode: number, message: string) {
-  const err = new Error(message) as Error & { statusCode: number };
-  err.statusCode = statusCode;
-  return err;
-}
+import { httpError, type ApiIssue } from "../lib/httpError.js";
 
 function assertBuilder(request: { user?: { role?: string | null } }) {
   if (
@@ -34,7 +29,7 @@ function assertBuilder(request: { user?: { role?: string | null } }) {
       "builder",
     )
   ) {
-    throw httpError(403, "Requires builder or admin role");
+    throw httpError(403, "Requires builder or admin role", "FORBIDDEN");
   }
 }
 
@@ -46,6 +41,10 @@ function parseOptions(value: unknown): FormFieldOption[] | null {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[+]?[\d\s().-]{7,}$/;
+
+function validationError(message: string, issues: ApiIssue[]) {
+  return httpError(400, message, "VALIDATION_FAILED", issues);
+}
 
 function validateSubmissionFields(
   fields: Array<{
@@ -59,18 +58,21 @@ function validateSubmissionFields(
   const known = new Set(fields.map((f) => f.apiId));
   for (const key of Object.keys(input)) {
     if (!known.has(key)) {
-      throw httpError(400, `Unknown field "${key}"`);
+      throw validationError(`Unknown field "${key}"`, [
+        { path: [key], code: "unknown", message: `Unknown field "${key}"` },
+      ]);
     }
   }
 
   const payload: Record<string, unknown> = {};
+  const issues: ApiIssue[] = [];
 
   for (const field of fields) {
     const raw = input[field.apiId];
 
     if (field.type === "honeypot") {
       if (raw != null && String(raw).trim() !== "") {
-        throw httpError(400, "Submission rejected");
+        throw httpError(400, "Submission rejected", "VALIDATION_FAILED");
       }
       continue;
     }
@@ -78,9 +80,14 @@ function validateSubmissionFields(
     if (field.type === "checkbox") {
       const checked = raw === true || raw === "true" || raw === "on" || raw === 1;
       if (field.required && !checked) {
-        throw httpError(400, `Field "${field.apiId}" is required`);
+        issues.push({
+          path: [field.apiId],
+          code: "required",
+          message: `Field "${field.apiId}" is required`,
+        });
+      } else {
+        payload[field.apiId] = checked;
       }
-      payload[field.apiId] = checked;
       continue;
     }
 
@@ -91,7 +98,11 @@ function validateSubmissionFields(
 
     if (empty) {
       if (field.required) {
-        throw httpError(400, `Field "${field.apiId}" is required`);
+        issues.push({
+          path: [field.apiId],
+          code: "required",
+          message: `Field "${field.apiId}" is required`,
+        });
       }
       continue;
     }
@@ -100,25 +111,40 @@ function validateSubmissionFields(
       case "email": {
         const value = String(raw).trim();
         if (!EMAIL_RE.test(value)) {
-          throw httpError(400, `Field "${field.apiId}" must be a valid email`);
+          issues.push({
+            path: [field.apiId],
+            code: "invalid_email",
+            message: `Field "${field.apiId}" must be a valid email`,
+          });
+        } else {
+          payload[field.apiId] = value;
         }
-        payload[field.apiId] = value;
         break;
       }
       case "phone": {
         const value = String(raw).trim();
         if (!PHONE_RE.test(value)) {
-          throw httpError(400, `Field "${field.apiId}" must be a valid phone`);
+          issues.push({
+            path: [field.apiId],
+            code: "invalid_phone",
+            message: `Field "${field.apiId}" must be a valid phone`,
+          });
+        } else {
+          payload[field.apiId] = value;
         }
-        payload[field.apiId] = value;
         break;
       }
       case "number": {
         const value = typeof raw === "number" ? raw : Number(raw);
         if (Number.isNaN(value)) {
-          throw httpError(400, `Field "${field.apiId}" must be a number`);
+          issues.push({
+            path: [field.apiId],
+            code: "invalid_number",
+            message: `Field "${field.apiId}" must be a number`,
+          });
+        } else {
+          payload[field.apiId] = value;
         }
-        payload[field.apiId] = value;
         break;
       }
       case "select":
@@ -126,14 +152,23 @@ function validateSubmissionFields(
         const value = String(raw);
         const options = parseOptions(field.options) ?? [];
         if (options.length > 0 && !options.some((o) => o.value === value)) {
-          throw httpError(400, `Field "${field.apiId}" has an invalid option`);
+          issues.push({
+            path: [field.apiId],
+            code: "invalid_option",
+            message: `Field "${field.apiId}" has an invalid option`,
+          });
+        } else {
+          payload[field.apiId] = value;
         }
-        payload[field.apiId] = value;
         break;
       }
       default:
         payload[field.apiId] = String(raw);
     }
+  }
+
+  if (issues.length > 0) {
+    throw validationError(issues[0]!.message, issues);
   }
 
   return payload;
@@ -150,7 +185,11 @@ function assertRateLimit(key: string) {
     (t) => now - t < windowMs,
   );
   if (timestamps.length >= max) {
-    throw httpError(429, "Too many submissions. Try again shortly.");
+    throw httpError(
+      429,
+      "Too many submissions. Try again shortly.",
+      "RATE_LIMITED",
+    );
   }
   timestamps.push(now);
   submitBuckets.set(key, timestamps);

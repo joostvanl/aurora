@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminClient } from "@/lib/cms";
 import { FieldManager } from "@/components/FieldManager";
+import { LocalizationModeEditor } from "@/components/LocalizationModeEditor";
 
 export default async function ContentTypeDetailPage({
   params,
@@ -24,6 +25,8 @@ export default async function ContentTypeDetailPage({
           <p>
             API ID <code>{type.apiId}</code>
             {type.description ? ` · ${type.description}` : ""}
+            {" · "}
+            Localization: <code>{type.localizationMode ?? "explicit"}</code>
           </p>
         </div>
         <div className="actions">
@@ -36,6 +39,7 @@ export default async function ContentTypeDetailPage({
         </div>
       </div>
 
+      <LocalizationModeEditor contentType={type} />
       <FieldManager contentType={type} />
     </>
   );

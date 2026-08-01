@@ -43,14 +43,26 @@ export function fieldNumber(entry: FlatEntry, key: string, fallback = 0): number
   return typeof value === "number" ? value : fallback;
 }
 
-/** Media fields store a public image URL string (or empty). Also accepts `{ url }` objects. */
+/** Media fields: prefer `{ url, alt, … }` objects; still accept legacy URL strings. */
 export function fieldMedia(
   entry: FlatEntry,
   key: string,
-): { url: string; alt: string } | null {
+): {
+  url: string;
+  alt: string;
+  width: number | null;
+  height: number | null;
+  mimeType: string | null;
+} | null {
   const value = entry.fields[key];
   if (typeof value === "string" && value.trim()) {
-    return { url: value.trim(), alt: "" };
+    return {
+      url: value.trim(),
+      alt: "",
+      width: null,
+      height: null,
+      mimeType: null,
+    };
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>;
@@ -61,23 +73,30 @@ export function fieldMedia(
           ? obj.src.trim()
           : "";
     if (!url) return null;
-    const alt =
-      typeof obj.alt === "string"
-        ? obj.alt
-        : typeof obj.label === "string"
-          ? obj.label
-          : typeof obj.name === "string"
-            ? obj.name
-            : "";
-    return { url, alt };
+    return {
+      url,
+      alt: typeof obj.alt === "string" ? obj.alt : "",
+      width: typeof obj.width === "number" ? obj.width : null,
+      height: typeof obj.height === "number" ? obj.height : null,
+      mimeType: typeof obj.mimeType === "string" ? obj.mimeType : null,
+    };
   }
   return null;
 }
 
+/** @deprecated Prefer server `?sort=sortOrder` — kept for offline/fallback. */
 export function sortByOrder(entries: FlatEntry[]): FlatEntry[] {
   return entries
     .slice()
     .sort((a, b) => fieldNumber(a, "sortOrder") - fieldNumber(b, "sortOrder"));
+}
+
+export async function getBootstrap() {
+  try {
+    return await getPublicClient().getBootstrap();
+  } catch {
+    return { siteSettings: null, nav: [], primaryPage: null };
+  }
 }
 
 export async function getSiteSettings(): Promise<FlatEntry | null> {
@@ -92,8 +111,10 @@ export async function getNavItems(): Promise<FlatEntry[]> {
   try {
     const { items } = await getPublicClient().listPublishedEntries("nav_item", {
       limit: 50,
+      sort: "sortOrder",
+      order: "asc",
     });
-    return sortByOrder(items);
+    return items;
   } catch {
     return [];
   }
@@ -101,8 +122,12 @@ export async function getNavItems(): Promise<FlatEntry[]> {
 
 export async function listType(apiId: string, limit = 50): Promise<FlatEntry[]> {
   try {
-    const { items } = await getPublicClient().listPublishedEntries(apiId, { limit });
-    return sortByOrder(items);
+    const { items } = await getPublicClient().listPublishedEntries(apiId, {
+      limit,
+      sort: "sortOrder",
+      order: "asc",
+    });
+    return items;
   } catch {
     return [];
   }
@@ -111,9 +136,10 @@ export async function listType(apiId: string, limit = 50): Promise<FlatEntry[]> 
 export async function getEntry(
   apiId: string,
   slug: string,
+  previewToken?: string,
 ): Promise<FlatEntry | null> {
   try {
-    return await getPublicClient().getPublishedEntry(apiId, slug);
+    return await getPublicClient().getPublishedEntry(apiId, slug, previewToken);
   } catch {
     return null;
   }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FieldTypeSchema, FormFieldTypeSchema } from "@cms/shared";
+import { FieldSettingsSchema, FieldTypeSchema, FormFieldTypeSchema, LocalizationModeSchema } from "@cms/shared";
 import { EntryStatus, Prisma, type FormFieldType } from "@prisma/client";
 import { prisma } from "../db.js";
 import {
@@ -9,6 +9,7 @@ import {
 } from "./entries.js";
 import { serializeContentType, serializeEntry } from "./serialize.js";
 import { formInclude, serializeForm } from "./forms.js";
+import { settingsToJson } from "./fieldSettings.js";
 
 export type ApplyMode = "overwrite" | "skip";
 
@@ -24,6 +25,7 @@ const FieldSpecSchema = z.object({
   type: FieldTypeSchema,
   required: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  settings: FieldSettingsSchema.nullable().optional(),
 });
 
 const EntrySpecSchema = z.object({
@@ -31,7 +33,10 @@ const EntrySpecSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  locale: z.string().optional(),
+  locale: z
+    .string()
+    .regex(/^[a-z]{2}-[A-Z]{2}$/)
+    .optional(),
   status: z.enum(["draft", "published"]).optional(),
   fields: z.record(z.unknown()).optional(),
 });
@@ -43,6 +48,7 @@ export const TypeSpecSchema = z.object({
     .regex(/^[a-z][a-z0-9_]*$/),
   name: z.string().min(1),
   description: z.string().optional(),
+  localizationMode: LocalizationModeSchema.optional(),
   fields: z.array(FieldSpecSchema).default([]),
   entries: z.array(EntrySpecSchema).default([]),
 });
@@ -132,6 +138,7 @@ export async function applyContentTypes(
           apiId: spec.apiId,
           name: spec.name,
           description: spec.description,
+          localizationMode: spec.localizationMode ?? "explicit",
         },
         include: { fields: true },
       });
@@ -143,6 +150,9 @@ export async function applyContentTypes(
           name: spec.name,
           ...(spec.description !== undefined
             ? { description: spec.description }
+            : {}),
+          ...(spec.localizationMode !== undefined
+            ? { localizationMode: spec.localizationMode }
             : {}),
         },
         include: { fields: true },
@@ -157,6 +167,8 @@ export async function applyContentTypes(
 
     for (const field of spec.fields) {
       const current = existingFields.get(field.apiId);
+      const settingsJson =
+        field.settings !== undefined ? settingsToJson(field.settings) : undefined;
       if (current) {
         if (mode === "overwrite") {
           await prisma.fieldDefinition.update({
@@ -166,6 +178,14 @@ export async function applyContentTypes(
               type: field.type,
               required: field.required ?? current.required,
               sortOrder: field.sortOrder ?? current.sortOrder,
+              ...(settingsJson !== undefined
+                ? {
+                    settings:
+                      settingsJson === Prisma.JsonNull
+                        ? Prisma.JsonNull
+                        : settingsJson,
+                  }
+                : {}),
             },
           });
           fieldCounters.updated += 1;
@@ -182,6 +202,11 @@ export async function applyContentTypes(
             type: field.type,
             required: field.required ?? false,
             sortOrder: field.sortOrder ?? order,
+            ...(settingsJson !== undefined && settingsJson !== Prisma.JsonNull
+              ? { settings: settingsJson }
+              : field.settings
+                ? { settings: field.settings as Prisma.InputJsonValue }
+                : {}),
           },
         });
         fieldCounters.created += 1;
@@ -192,7 +217,7 @@ export async function applyContentTypes(
     const entryResults = [];
 
     for (const entrySpec of spec.entries) {
-      const locale = entrySpec.locale ?? "en";
+      const locale = entrySpec.locale ?? "en-US";
       const status =
         entrySpec.status === "published"
           ? EntryStatus.published

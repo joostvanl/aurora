@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aurora minimal frontend</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      code {
+        background: #f4f4f4;
+        padding: 0.1em 0.3em;
+      }
+      nav a {
+        margin-right: 0.75rem;
+      }
+      .err {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Aurora minimal frontend</h1>
+    <p>
+      Calls <code>GET /api/v1/bootstrap</code> with
+      <code>x-site-key</code>. Open this file via a static server on
+      <code>localhost</code> (CORS allows any local port).
+    </p>
+    <label>
+      API base
+      <input id="api" size="48" value="http://localhost:4000" />
+    </label>
+    <br /><br />
+    <label>
+      Site key
+      <input id="key" size="32" value="demo-site-key" />
+    </label>
+    <br /><br />
+    <button id="load" type="button">Load bootstrap</button>
+    <p id="status" class="err"></p>
+    <nav id="nav"></nav>
+    <article id="main"></article>
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      function renderRich(el, value, format) {
+        if (value == null) {
+          el.textContent = "";
+          return;
+        }
+        const text = String(value);
+        if (format === "html") {
+          el.innerHTML = text;
+        } else if (format === "markdown") {
+          el.textContent = text;
+          el.style.whiteSpace = "pre-wrap";
+        } else {
+          el.textContent = text;
+          el.style.whiteSpace = "pre-wrap";
+        }
+      }
+
+      $("load").onclick = async () => {
+        $("status").textContent = "";
+        const API = $("api").value.replace(/\/$/, "");
+        const key = $("key").value.trim();
+        try {
+          const res = await fetch(`${API}/api/v1/bootstrap`, {
+            headers: { "x-site-key": key },
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            throw new Error(body.message || res.statusText);
+          }
+          $("nav").innerHTML = (body.nav || [])
+            .map((item) => {
+              const label = item.fields?.label || item.slug;
+              const href = item.fields?.href || "#";
+              return `<a href="${href}">${label}</a>`;
+            })
+            .join("");
+          const page = body.primaryPage;
+          if (!page) {
+            $("main").textContent = "No home page published.";
+            return;
+          }
+          const title = page.fields?.title || page.slug;
+          const bodyHtml = page.fields?.body || "";
+          $("main").innerHTML = `<h2>${title}</h2><div id="body"></div>`;
+          // Prefer contentFormat from schema in real apps; home body is richtext HTML.
+          renderRich($("body"), bodyHtml, "html");
+        } catch (err) {
+          $("status").textContent = String(err.message || err);
+        }
+      };
+    </script>
+  </body>
+</html>

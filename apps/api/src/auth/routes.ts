@@ -23,6 +23,10 @@ import {
   publicUser,
 } from "./websites.js";
 import { RolePermission } from "./roles.js";
+import {
+  assertLocalesRemovable,
+  normalizeWebsiteLocalesInput,
+} from "../lib/locales.js";
 
 const RegisterSchema = z.object({
   email: z.string().email(),
@@ -64,6 +68,12 @@ const UpdateWebsiteSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.union([z.string().max(2000), z.literal("")]).optional(),
   allowedOrigins: z.array(z.string().max(500)).max(50).optional(),
+  locales: z
+    .array(z.string().regex(/^[a-z]{2}-[A-Z]{2}$/))
+    .min(1)
+    .max(50)
+    .optional(),
+  defaultLocale: z.string().regex(/^[a-z]{2}-[A-Z]{2}$/).optional(),
 });
 
 function serializeWebsite(website: {
@@ -72,6 +82,8 @@ function serializeWebsite(website: {
   description: string | null;
   siteKey: string;
   allowedOrigins: string[];
+  locales: string[];
+  defaultLocale: string;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -81,6 +93,8 @@ function serializeWebsite(website: {
     description: website.description,
     siteKey: website.siteKey,
     allowedOrigins: website.allowedOrigins ?? [],
+    locales: website.locales ?? ["en-US"],
+    defaultLocale: website.defaultLocale ?? "en-US",
     createdAt: website.createdAt.toISOString(),
     updatedAt: website.updatedAt.toISOString(),
   };
@@ -267,13 +281,37 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       const body = UpdateWebsiteSchema.parse(request.body);
       const websiteId = websiteIdFrom(request);
 
+      const current = await prisma.website.findUniqueOrThrow({
+        where: { id: websiteId },
+      });
+
+      let localesUpdate:
+        | { locales: string[]; defaultLocale: string }
+        | undefined;
+      if (body.locales !== undefined || body.defaultLocale !== undefined) {
+        localesUpdate = normalizeWebsiteLocalesInput({
+          locales: body.locales,
+          defaultLocale: body.defaultLocale,
+          current: {
+            locales: current.locales,
+            defaultLocale: current.defaultLocale,
+          },
+        });
+        await assertLocalesRemovable(
+          websiteId,
+          localesUpdate.locales,
+          current.locales,
+        );
+      }
+
       const hasUpdate =
         body.name !== undefined ||
         body.description !== undefined ||
-        body.allowedOrigins !== undefined;
+        body.allowedOrigins !== undefined ||
+        localesUpdate !== undefined;
 
       const website = !hasUpdate
-        ? await prisma.website.findUniqueOrThrow({ where: { id: websiteId } })
+        ? current
         : await prisma.website.update({
             where: { id: websiteId },
             data: {
@@ -284,6 +322,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
               ...(body.allowedOrigins !== undefined
                 ? {
                     allowedOrigins: normalizeAllowedOrigins(body.allowedOrigins),
+                  }
+                : {}),
+              ...(localesUpdate
+                ? {
+                    locales: localesUpdate.locales,
+                    defaultLocale: localesUpdate.defaultLocale,
                   }
                 : {}),
             },

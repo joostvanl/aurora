@@ -5,25 +5,6 @@ export const WEBSITE_COST_RATES = {
   perThousandPageViewsEur: 0.5,
 } as const;
 
-function hashSeed(input: string): number {
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-/** Stable illustrative page-view usage until real metering exists. */
-export function estimateWebsiteUsage(websiteId: string) {
-  const seed = hashSeed(websiteId || "default");
-  const pageViews = 18_000 + (seed % 90_000);
-
-  return {
-    pageViews,
-    pageViewBlocks: Math.ceil(pageViews / 1000),
-  };
-}
-
 export function formatEur(amount: number): string {
   return new Intl.NumberFormat("nl-NL", {
     style: "currency",
@@ -32,14 +13,16 @@ export function formatEur(amount: number): string {
 }
 
 export function buildWebsiteCostBreakdown(input: {
-  websiteId: string;
   seatCount: number;
+  /** Metered public content API requests this month. */
+  pageViews?: number;
   aiTokens?: number;
   aiCostPerTokenEur?: number;
   aiEstimatedCostEur?: number;
 }) {
   const seats = Math.max(1, input.seatCount);
-  const usage = estimateWebsiteUsage(input.websiteId);
+  const pageViews = Math.max(0, Math.floor(input.pageViews ?? 0));
+  const pageViewBlocks = pageViews === 0 ? 0 : Math.ceil(pageViews / 1000);
   const aiTokens = Math.max(0, input.aiTokens ?? 0);
   const costPerToken = Math.max(0, input.aiCostPerTokenEur ?? 0);
   const ai =
@@ -50,14 +33,15 @@ export function buildWebsiteCostBreakdown(input: {
   const website = WEBSITE_COST_RATES.websitePerMonthEur;
   const seatsTotal = seats * WEBSITE_COST_RATES.seatPerMonthEur;
   const pageViewsTotal =
-    usage.pageViewBlocks * WEBSITE_COST_RATES.perThousandPageViewsEur;
+    pageViewBlocks * WEBSITE_COST_RATES.perThousandPageViewsEur;
   const auroraSubtotal = website + seatsTotal + pageViewsTotal;
   const total = auroraSubtotal + ai;
 
   return {
     seats,
     usage: {
-      ...usage,
+      pageViews,
+      pageViewBlocks,
       aiTokens,
       aiCostPerTokenEur: costPerToken,
       aiProviderEstimateEur: ai,
@@ -80,9 +64,12 @@ export function buildWebsiteCostBreakdown(input: {
       {
         id: "pageViews",
         label: "Page views",
-        detail: `${usage.pageViewBlocks.toLocaleString("nl-NL")} × ${formatEur(WEBSITE_COST_RATES.perThousandPageViewsEur)} per 1.000`,
+        detail: `${pageViewBlocks.toLocaleString("nl-NL")} × ${formatEur(WEBSITE_COST_RATES.perThousandPageViewsEur)} per 1.000`,
         amount: pageViewsTotal,
-        note: `${usage.pageViews.toLocaleString("nl-NL")} views this month`,
+        note:
+          pageViews === 0
+            ? "No public content requests recorded this month yet"
+            : `${pageViews.toLocaleString("nl-NL")} content requests this month`,
       },
       {
         id: "ai",

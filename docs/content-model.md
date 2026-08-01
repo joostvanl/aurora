@@ -3,15 +3,24 @@
 ## Hierarchy
 
 ```
-User (account / tenant)
+User (account / tenant) / Website
+ ├── locales[] + defaultLocale (BCP-47 language-REGION, e.g. en-US, nl-NL)
  └── ContentType (apiId e.g. "post")
+      ├── localizationMode: explicit | all_locales
       ├── FieldDefinition[] (apiId e.g. "title", type e.g. "text")
       └── Entry[]
            ├── slug (URL key for this entry)
            ├── status: draft | published
-           ├── locale (default "en")
+           ├── locale (must be in Website.locales; default website.defaultLocale)
            └── EntryFieldValue[] → serialized as fields: { [fieldApiId]: value }
 ```
+
+## Website locales
+
+| Property | Meaning |
+|----------|---------|
+| `locales` | Enabled BCP-47 tags (`en-US`, `nl-NL`, …) |
+| `defaultLocale` | Used when public/admin omit `?locale=` |
 
 ## Content type
 
@@ -23,6 +32,7 @@ A content type is a named schema.
 | `apiId` | Stable machine id used in URLs (`post`, `nav_item`) — **use this in API paths** |
 | `name` | Human label |
 | `description` | Optional |
+| `localizationMode` | `explicit` (default): translations created on demand. `all_locales`: creating an entry also creates draft siblings for every site locale |
 | `fields` | Ordered field definitions |
 
 `apiId` rules (when creating): `^[a-z][a-z0-9_]*$`
@@ -42,13 +52,24 @@ A content type is a named schema.
 | Type | Typical JSON value |
 |------|--------------------|
 | `text` | string |
-| `textarea` | string (longer) |
-| `richtext` | string (plain or light markup; treat as text unless you know otherwise) |
-| `boolean` | boolean |
-| `datetime` | ISO-8601 string |
-| `number` | number |
-| `slug` | string (URL-safe fragment) |
-| `media` | string — public image URL (uploaded via admin or pasted) |
+| `richtext` | string — **HTML** from the TipTap editor (`settings.contentFormat` = `html`) |
+| `textarea` | string — default `plain`; may be `markdown` (e.g. docs `body`) |
+| `media` | `{ url, alt?, width?, height?, mimeType? }` (legacy URL string still accepted) |
+| `relation` | string — slug of one related entry (`settings.relatedContentTypeApiId`) |
+| `relations` | string[] — slugs of related entries (multi-select) |
+
+Field definitions may include optional `settings` (JSON):
+
+```json
+{
+  "relatedContentTypeApiId": "author",
+  "contentFormat": "markdown"
+}
+```
+
+`contentFormat` is always present on **serialized** field defs (`html` | `markdown` | `plain`). Defaults: `richtext`→`html`, `text`/`textarea`→`plain`.
+
+For `relation` / `relations`, `relatedContentTypeApiId` is required.
 
 ## Entry
 
@@ -58,7 +79,7 @@ A content type is a named schema.
 | `slug` | **Path key** for public `…/entries/:slug` |
 | `contentType` | Parent type’s `apiId` (string) |
 | `status` | `draft` \| `published` |
-| `locale` | Default `en` (public API has no locale query yet) |
+| `locale` | BCP-47 language-REGION (e.g. `en-US`). Must be in `Website.locales`. Public list/get filter with `?locale=` (defaults to `defaultLocale`) |
 | `fields` | `Record<string, unknown>` keyed by field `apiId` |
 | `publishedAt` | ISO string or `null` |
 | `createdAt` / `updatedAt` | ISO strings |
@@ -96,12 +117,12 @@ For the **seeded demo**, types are known in advance — see [demo-content-map.md
 
 ## Relations between entries
 
-There are **no foreign-key relations** in the API. Links are conventions via string fields, e.g.:
+Use field types **`relation`** (single select) and **`relations`** (multi select). Stored values are related entry **slugs** (string / string[]). There are no database foreign keys — resolve with a second fetch:
 
-- `post.fields.authorSlug` → look up `author` entry with that slug
-- `nav_item.fields.href` → frontend route path
+- `post.fields.authors` → `["mira-vale", "jonas-reed"]` → fetch each `author` by slug
+- `nav_item.fields.href` → frontend route path (plain text, not a CMS relation)
 
-Resolve these with a second fetch or by joining in your app after listing both collections.
+Public API does not auto-expand related entries; join in your app after listing both collections.
 
 ## Empty CMS
 

@@ -45,7 +45,7 @@ export default async function BlogsIndexPage() {
           const teaser = plainTextWordTeaser(fieldString(post, "body"), 20);
           const image = fieldMedia(post, "image");
           const title = fieldString(post, "title", post.slug);
-          const imageAlt = image?.alt?.trim() || `Illustratie bij ${title}`;
+          const imageAlt = image?.alt?.trim() || title;
           return (
             <Link
               className="list-link blog-card"

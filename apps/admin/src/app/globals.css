@@ -159,6 +159,52 @@ button {
   font-weight: 600;
 }
 
+.field-drag-cell {
+  width: 2.25rem;
+  vertical-align: middle !important;
+}
+
+.field-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+  letter-spacing: -0.12em;
+  font-size: 0.85rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.field-drag-handle:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.field-drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.field-drag-handle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.table tr.field-row.is-dragging {
+  opacity: 0.45;
+}
+
+.table tr.field-row.is-drop-target td {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;

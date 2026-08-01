@@ -6,7 +6,7 @@ Account: `demo@aurora.local` · site key: `demo-site-key`
 
 ## Navigation (`nav_item`)
 
-Sort client-side by `fields.sortOrder`. Header and footer Explore both use this list.
+Sort with `?sort=sortOrder&order=asc`. Header and footer Explore both use this list.
 
 | slug | Typical href | Purpose |
 |------|--------------|---------|
@@ -51,7 +51,7 @@ New static pages: publish a `page` entry and use `/[slug]` (unless the slug is r
 
 ## Docs (`doc`) → `/docs`, `/docs/[slug]`
 
-Product documentation is CMS-driven (Markdown in field `body`). Sort by `fields.sortOrder`. Index page uses slug `readme`.
+Product documentation is CMS-driven (Markdown in field `body`, `contentFormat: markdown`). Sort with `?sort=sortOrder`. Index page uses slug `readme`.
 
 Source of truth for seeding: repo `docs/*.md` via `pnpm --filter @cms/api db:seed-docs` (also part of full `db:seed`).
 
@@ -73,7 +73,7 @@ Concrete scenarios (marketing site, docs portal, multi-brand, …).
 
 ## Guides (`post`) → `/blog`, `/blog/[slug]`
 
-Editorial guides. Related author via `fields.authorSlug` → `author` entries.
+Editorial guides. Authors via `fields.authors` (`relations` → `author` slugs).
 
 ## Blogs (`blog`) → `/blogs`, `/blogs/[slug]`
 

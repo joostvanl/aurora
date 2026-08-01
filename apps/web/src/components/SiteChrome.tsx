@@ -25,6 +25,9 @@ export async function SiteHeader() {
           <>
             <Link href="/">Product</Link>
             <Link href="/docs">Docs</Link>
+            <Link href="/services">Features</Link>
+            <Link href="/blog">Guides</Link>
+            <Link href="/blogs">Blogs</Link>
             <Link href="/contact">Contact</Link>
           </>
         )}
@@ -67,6 +70,9 @@ export async function SiteFooter() {
             ) : (
               <>
                 <Link href="/docs">Docs</Link>
+                <Link href="/services">Features</Link>
+                <Link href="/blog">Guides</Link>
+                <Link href="/blogs">Blogs</Link>
                 <Link href="/contact">Contact</Link>
               </>
             )}

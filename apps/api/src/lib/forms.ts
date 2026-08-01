@@ -10,6 +10,7 @@ import type {
   FormSubmission as PrismaFormSubmission,
 } from "@prisma/client";
 import { prisma } from "../db.js";
+import { httpError } from "./httpError.js";
 
 export const formInclude = {
   fields: { orderBy: { sortOrder: "asc" as const } },
@@ -17,18 +18,14 @@ export const formInclude = {
 
 type FormWithFields = PrismaForm & { fields: PrismaFormField[] };
 
-function httpError(statusCode: number, message: string) {
-  const err = new Error(message) as Error & { statusCode: number };
-  err.statusCode = statusCode;
-  return err;
-}
-
 export async function getFormOrThrow(apiId: string, websiteId: string) {
   const form = await prisma.form.findUnique({
     where: { websiteId_apiId: { websiteId, apiId } },
     include: formInclude,
   });
-  if (!form) throw httpError(404, `Form "${apiId}" not found`);
+  if (!form) {
+    throw httpError(404, `Form "${apiId}" not found`, "FORM_NOT_FOUND");
+  }
   return form;
 }
 

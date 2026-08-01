@@ -19,7 +19,8 @@ Returned by `GET /api/v1/content-types` and `GET /api/v1/content-types/:apiId`.
       "name": "Title",
       "type": "text",
       "required": true,
-      "sortOrder": 0
+      "sortOrder": 0,
+      "settings": { "contentFormat": "plain" }
     }
   ],
   "createdAt": "2026-07-28T00:00:00.000Z",
@@ -59,7 +60,9 @@ Returned for every entry (list item or single).
 2. **`slug` (top-level)** is the URL key for `GET .../entries/:slug`.
 3. Many types also store a **`fields.slug`** string for editors — prefer top-level `entry.slug` for routing.
 4. Field values are JSON: strings, numbers, booleans, or richer JSON depending on type.
-5. `richtext` / `textarea` are plain strings (often markdown-ish or paragraphs separated by `\n\n`). Render as you prefer; this site treats them as text with line breaks.
+5. Text-like values follow `fields[].settings.contentFormat` on the content type: `html` (richtext), `markdown`, or `plain`. Prefer the schema over sniffing the string.
+6. Media values prefer `{ "url", "alt", "width", "height", "mimeType" }`; a bare URL string is legacy.
+7. Errors: `{ "message", "code", "issues?" }` — see [public-api.md](./public-api.md).
 
 ## Paginated list
 

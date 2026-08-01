@@ -3,10 +3,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RichTextBody } from "@/components/RichTextBody";
 import { fieldNumber, fieldString, getEntry } from "@/lib/cms";
+import type { FlatEntry } from "@cms/shared";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
+
+function authorSlugsFromPost(post: FlatEntry): string[] {
+  // Live schema: relation field `author` (single slug). Also accept `authors` multi.
+  const multi = post.fields.authors;
+  if (Array.isArray(multi)) {
+    return multi.filter(
+      (v): v is string => typeof v === "string" && v.trim().length > 0,
+    );
+  }
+  const single = fieldString(post, "author").trim();
+  if (single) return [single];
+  const legacy = fieldString(post, "authorSlug").trim();
+  return legacy ? [legacy] : [];
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -22,8 +37,11 @@ export default async function BlogPostPage({ params }: Props) {
   const post = await getEntry("post", slug);
   if (!post) notFound();
 
-  const authorSlug = fieldString(post, "authorSlug");
-  const author = authorSlug ? await getEntry("author", authorSlug) : null;
+  const authorSlugs = authorSlugsFromPost(post);
+  const authors = (
+    await Promise.all(authorSlugs.map((s) => getEntry("author", s)))
+  ).filter((a): a is FlatEntry => Boolean(a));
+
   const date =
     typeof post.fields.publishedDate === "string"
       ? post.fields.publishedDate
@@ -49,18 +67,35 @@ export default async function BlogPostPage({ params }: Props) {
       {fieldString(post, "excerpt") && (
         <p className="lead">{fieldString(post, "excerpt")}</p>
       )}
-      {author && (
+      {authors.length > 0 && (
         <p className="meta">
           By{" "}
-          <strong>{fieldString(author, "name")}</strong>
-          {fieldString(author, "role") ? ` · ${fieldString(author, "role")}` : ""}
+          {authors.map((author, i) => (
+            <span key={author.id}>
+              {i > 0 ? (i === authors.length - 1 ? " and " : ", ") : null}
+              <strong>{fieldString(author, "name")}</strong>
+              {fieldString(author, "role")
+                ? ` · ${fieldString(author, "role")}`
+                : ""}
+            </span>
+          ))}
         </p>
       )}
       <RichTextBody value={fieldString(post, "body")} />
-      {author && fieldString(author, "bio") && (
+      {authors.length > 0 && (
         <section className="section" style={{ maxWidth: "42rem" }}>
-          <h2 style={{ fontSize: "1.25rem" }}>About the author</h2>
-          <p className="meta">{fieldString(author, "bio")}</p>
+          <h2 style={{ fontSize: "1.25rem" }}>
+            {authors.length === 1 ? "About the author" : "About the authors"}
+          </h2>
+          {authors.map((author) =>
+            fieldString(author, "bio") ? (
+              <p key={author.id} className="meta">
+                <strong>{fieldString(author, "name")}</strong>
+                {" — "}
+                {fieldString(author, "bio")}
+              </p>
+            ) : null,
+          )}
         </section>
       )}
     </article>

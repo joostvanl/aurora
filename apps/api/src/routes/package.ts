@@ -119,6 +119,10 @@ async function buildContentExport(
         type: f.type,
         required: f.required,
         sortOrder: f.sortOrder,
+        settings:
+          f.settings && typeof f.settings === "object" && !Array.isArray(f.settings)
+            ? (f.settings as { relatedContentTypeApiId?: string })
+            : null,
       })),
       entries,
     });

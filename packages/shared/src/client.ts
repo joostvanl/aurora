@@ -5,9 +5,11 @@ import type {
   CreateFieldDefinitionInput,
   CreateFormFieldInput,
   CreateFormInput,
+  CreateTranslationInput,
   FlatEntry,
   Form,
   FormSubmission,
+  PublicLocalesResponse,
   SubmitFormInput,
   SubmitFormResult,
   UpdateContentTypeInput,
@@ -24,6 +26,7 @@ import type {
   AiStatus,
   EntryVersion,
 } from "./ai.js";
+import type { ContentRequestUsage } from "./analytics.js";
 import type {
   AuthResponse,
   AuthUser,
@@ -52,6 +55,9 @@ export type ListEntriesParams = {
   offset?: number;
   slug?: string;
   status?: "draft" | "published";
+  locale?: string;
+  sort?: "publishedAt" | "createdAt" | "updatedAt" | "sortOrder";
+  order?: "asc" | "desc";
 };
 
 export type ListEntriesResult = {
@@ -59,6 +65,28 @@ export type ListEntriesResult = {
   total: number;
   limit: number;
   offset: number;
+  sort?: string;
+  order?: string;
+};
+
+export type BootstrapPayload = {
+  siteSettings: FlatEntry | null;
+  nav: FlatEntry[];
+  primaryPage: FlatEntry | null;
+  locale?: string;
+};
+
+export type CorsCheckResult = {
+  allowed: boolean;
+  origin: string | null;
+  hint: string;
+};
+
+export type PreviewTokenResult = {
+  token: string;
+  expiresAt: string;
+  previewUrl: string;
+  apiUrl: string;
 };
 
 export type PackageApplyCounters = {
@@ -311,6 +339,9 @@ export class CmsClient {
     if (params.limit != null) qs.set("limit", String(params.limit));
     if (params.offset != null) qs.set("offset", String(params.offset));
     if (params.slug) qs.set("slug", params.slug);
+    if (params.locale) qs.set("locale", params.locale);
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.order) qs.set("order", params.order);
     const query = qs.toString();
     return this.request<ListEntriesResult>(
       `/api/v1/content-types/${apiId}/entries${query ? `?${query}` : ""}`,
@@ -319,12 +350,61 @@ export class CmsClient {
     );
   }
 
-  getPublishedEntry(apiId: string, slug: string) {
+  getPublishedEntry(
+    apiId: string,
+    slug: string,
+    options?: string | { previewToken?: string; locale?: string },
+  ) {
+    const qs = new URLSearchParams();
+    if (typeof options === "string") {
+      qs.set("previewToken", options);
+    } else if (options) {
+      if (options.previewToken) qs.set("previewToken", options.previewToken);
+      if (options.locale) qs.set("locale", options.locale);
+    }
+    const query = qs.toString();
     return this.request<FlatEntry>(
-      `/api/v1/content-types/${apiId}/entries/${slug}`,
+      `/api/v1/content-types/${apiId}/entries/${slug}${query ? `?${query}` : ""}`,
       {},
       { site: true },
     );
+  }
+
+  getLocales() {
+    return this.request<PublicLocalesResponse>(
+      "/api/v1/locales",
+      {},
+      { site: true },
+    );
+  }
+
+  getBootstrap(locale?: string) {
+    const qs = locale ? `?locale=${encodeURIComponent(locale)}` : "";
+    return this.request<BootstrapPayload>(
+      `/api/v1/bootstrap${qs}`,
+      {},
+      { site: true },
+    );
+  }
+
+  getContentTypeSchema(apiId: string) {
+    return this.request<Record<string, unknown>>(
+      `/api/v1/content-types/${apiId}/schema.json`,
+      {},
+      { site: true },
+    );
+  }
+
+  corsCheck(origin?: string) {
+    const qs =
+      origin != null && origin !== ""
+        ? `?origin=${encodeURIComponent(origin)}`
+        : "";
+    return this.request<CorsCheckResult>(`/api/v1/cors-check${qs}`, {});
+  }
+
+  getOpenApi() {
+    return this.request<Record<string, unknown>>("/api/v1/openapi.json", {});
   }
 
   // Admin
@@ -386,6 +466,9 @@ export class CmsClient {
     if (params.offset != null) qs.set("offset", String(params.offset));
     if (params.slug) qs.set("slug", params.slug);
     if (params.status) qs.set("status", params.status);
+    if (params.locale) qs.set("locale", params.locale);
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.order) qs.set("order", params.order);
     const query = qs.toString();
     return this.request<ListEntriesResult>(
       `/api/v1/admin/content-types/${apiId}/entries${query ? `?${query}` : ""}`,
@@ -402,9 +485,40 @@ export class CmsClient {
     );
   }
 
+  createPreviewToken(apiId: string, entryId: string) {
+    return this.request<PreviewTokenResult>(
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/preview-token`,
+      { method: "POST" },
+      { auth: true },
+    );
+  }
+
   createEntry(apiId: string, input: CreateEntryInput) {
     return this.request<FlatEntry>(
       `/api/v1/admin/content-types/${apiId}/entries`,
+      { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  createTranslation(
+    apiId: string,
+    entryId: string,
+    input: CreateTranslationInput,
+  ) {
+    return this.request<FlatEntry>(
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/translations`,
+      { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  syncMissingLocales(apiId: string, input: { dryRun?: boolean } = {}) {
+    return this.request<{
+      missing: Array<{ slug: string; locale: string; sourceEntryId: string }>;
+      created: FlatEntry[];
+    }>(
+      `/api/v1/admin/content-types/${apiId}/sync-locales`,
       { method: "POST", body: JSON.stringify(input) },
       { auth: true },
     );
@@ -444,6 +558,14 @@ export class CmsClient {
 
   getAiStatus() {
     return this.request<AiStatus>("/api/v1/admin/ai/status", {}, { auth: true });
+  }
+
+  getContentRequestUsage() {
+    return this.request<ContentRequestUsage>(
+      "/api/v1/admin/analytics/content-requests",
+      {},
+      { auth: true },
+    );
   }
 
   updateAiConfig(input: AiConfigUpdate) {
