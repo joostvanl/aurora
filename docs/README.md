@@ -2,7 +2,7 @@
 
 Canonical instructions for humans **and** AI agents building frontends against Aurora.
 
-These files are also published on the product site at **`/docs`**.
+These files are seeded into the CMS as content type **`doc`** and published on the product site at **`/docs`**.
 
 ## Read order
 

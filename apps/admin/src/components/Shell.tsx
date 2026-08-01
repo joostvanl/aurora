@@ -208,6 +208,7 @@ function ShellFrame({
           {showAi && <Link href="/ai">AI settings</Link>}
           {isAdmin && <Link href="/website">Website</Link>}
           {isAdmin && <Link href="/members">Members</Link>}
+          {isAdmin && <Link href="/packages">Packages</Link>}
           <Link href="/select-website">Websites</Link>
           <div className="nav-section">Entries</div>
           {navTypes.map((t) => (

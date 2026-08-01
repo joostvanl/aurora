@@ -50,7 +50,7 @@ Always read copy from `entry.fields.<apiId>`.
 | Path | Source |
 |------|--------|
 | `/` | `page/home` + lists |
-| `/docs`, `/docs/[slug]` | Markdown in repo `docs/` |
+| `/docs`, `/docs/[slug]` | `doc` entries (Markdown `body`) |
 | `/services`, `/services/[slug]` | `service` |
 | `/work`, `/work/[slug]` | `project` |
 | `/blog`, `/blog/[slug]` | `post` |

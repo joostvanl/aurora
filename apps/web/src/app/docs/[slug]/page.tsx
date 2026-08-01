@@ -2,20 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DocsNav, DocsPager } from "@/components/DocsNav";
 import { MarkdownDoc } from "@/components/MarkdownDoc";
-import {
-  DOC_CATALOG,
-  getDocMeta,
-  readDocMarkdown,
-  rewriteDocLinks,
-} from "@/lib/docs";
+import { getDoc, listDocs } from "@/lib/docs";
 
 export const dynamic = "force-dynamic";
-
-export function generateStaticParams() {
-  return DOC_CATALOG.filter((d) => d.slug !== "readme").map((d) => ({
-    slug: d.slug,
-  }));
-}
 
 export async function generateMetadata({
   params,
@@ -23,10 +12,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const meta = getDocMeta(slug);
+  const doc = await getDoc(slug);
   return {
-    title: meta?.title ?? "Docs",
-    description: meta?.description,
+    title: doc?.title ?? "Docs",
+    description: doc?.description,
   };
 }
 
@@ -37,19 +26,17 @@ export default async function DocPage({
 }) {
   const { slug } = await params;
   if (slug === "readme") notFound();
-  const meta = getDocMeta(slug);
-  if (!meta) notFound();
 
-  const raw = await readDocMarkdown(slug);
-  if (!raw) notFound();
+  const [catalog, doc] = await Promise.all([listDocs(), getDoc(slug)]);
+  if (!doc) notFound();
 
   return (
     <div className="docs-layout">
-      <DocsNav active={slug} />
+      <DocsNav active={slug} catalog={catalog} />
       <div className="docs-content">
         <p className="eyebrow">Aurora docs</p>
-        <MarkdownDoc source={rewriteDocLinks(raw)} />
-        <DocsPager current={meta} />
+        <MarkdownDoc source={doc.body} />
+        <DocsPager current={doc} catalog={catalog} />
       </div>
     </div>
   );

@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { DOC_CATALOG, type DocMeta } from "@/lib/docs";
+import type { DocMeta } from "@/lib/docs";
 
-export function DocsNav({ active }: { active?: string }) {
+export function DocsNav({
+  active,
+  catalog,
+}: {
+  active?: string;
+  catalog: DocMeta[];
+}) {
   return (
     <aside className="docs-nav">
       <div className="docs-nav-title">Documentation</div>
       <nav>
-        {DOC_CATALOG.map((doc) => (
+        {catalog.map((doc) => (
           <Link
             key={doc.slug}
             href={doc.slug === "readme" ? "/docs" : `/docs/${doc.slug}`}
@@ -21,10 +27,16 @@ export function DocsNav({ active }: { active?: string }) {
   );
 }
 
-export function DocsPager({ current }: { current: DocMeta }) {
-  const idx = DOC_CATALOG.findIndex((d) => d.slug === current.slug);
-  const prev = idx > 0 ? DOC_CATALOG[idx - 1] : null;
-  const next = idx >= 0 && idx < DOC_CATALOG.length - 1 ? DOC_CATALOG[idx + 1] : null;
+export function DocsPager({
+  current,
+  catalog,
+}: {
+  current: DocMeta;
+  catalog: DocMeta[];
+}) {
+  const idx = catalog.findIndex((d) => d.slug === current.slug);
+  const prev = idx > 0 ? catalog[idx - 1] : null;
+  const next = idx >= 0 && idx < catalog.length - 1 ? catalog[idx + 1] : null;
 
   return (
     <div className="docs-pager">

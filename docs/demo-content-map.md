@@ -11,7 +11,7 @@ Sort client-side by `fields.sortOrder`. Header and footer Explore both use this 
 | slug | Typical href | Purpose |
 |------|--------------|---------|
 | home | `/` | Product home |
-| docs | `/docs` | Full documentation (filesystem markdown) |
+| docs | `/docs` | Full documentation (`doc` entries) |
 | features | `/services` | Capabilities (`service`) |
 | use-cases | `/work` | Use cases (`project`) |
 | guides | `/blog` | Guides / journal (`post`) |
@@ -49,9 +49,11 @@ Optional page fields: `formApiId`, `ctaTitle`, `ctaLead`, `secondaryCtaLabel`, `
 
 New static pages: publish a `page` entry and use `/[slug]` (unless the slug is reserved for a dedicated route).
 
-## Docs
+## Docs (`doc`) → `/docs`, `/docs/[slug]`
 
-`/docs` stays **filesystem markdown** (agent/developer instructions), not CMS pages.
+Product documentation is CMS-driven (Markdown in field `body`). Sort by `fields.sortOrder`. Index page uses slug `readme`.
+
+Source of truth for seeding: repo `docs/*.md` via `pnpm --filter @cms/api db:seed-docs` (also part of full `db:seed`).
 
 ## Forms (not content types)
 

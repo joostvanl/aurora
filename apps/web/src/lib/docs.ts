@@ -1,5 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import type { FlatEntry } from "@cms/shared";
+import { fieldNumber, fieldString, getEntry, listType } from "@/lib/cms";
 
 export type DocMeta = {
   slug: string;
@@ -8,129 +8,35 @@ export type DocMeta = {
   order: number;
 };
 
-/** Canonical reading order for the product docs site. */
-export const DOC_CATALOG: DocMeta[] = [
-  {
-    slug: "readme",
-    title: "Start here",
-    description: "Index and absolute rules for Aurora",
-    order: 0,
-  },
-  {
-    slug: "overview",
-    title: "Overview",
-    description: "What Aurora is and is not",
-    order: 1,
-  },
-  {
-    slug: "multi-tenancy",
-    title: "Multi-tenancy & auth",
-    description: "Accounts, site keys, JWT vs public read",
-    order: 2,
-  },
-  {
-    slug: "content-model",
-    title: "Content model",
-    description: "Types, fields, entries, publishing",
-    order: 3,
-  },
-  {
-    slug: "response-shapes",
-    title: "Response shapes",
-    description: "FlatEntry and ContentType JSON",
-    order: 4,
-  },
-  {
-    slug: "public-api",
-    title: "Public API",
-    description: "Endpoints, headers, curl cookbook",
-    order: 5,
-  },
-  {
-    slug: "forms",
-    title: "Forms",
-    description: "Form builder, public submit, embeds",
-    order: 6,
-  },
-  {
-    slug: "management-api",
-    title: "Management API",
-    description: "Write types & content (agents, tokens, provision)",
-    order: 7,
-  },
-  {
-    slug: "demo-content-map",
-    title: "Site content map",
-    description: "Seeded product-site types and routes",
-    order: 8,
-  },
-  {
-    slug: "frontend-playbook",
-    title: "Frontend playbook",
-    description: "Build a frontend step by step",
-    order: 9,
-  },
-  {
-    slug: "typed-client",
-    title: "Typed client",
-    description: "@cms/shared CmsClient",
-    order: 10,
-  },
-  {
-    slug: "errors-and-gotchas",
-    title: "Errors & gotchas",
-    description: "Common integration failures",
-    order: 11,
-  },
-  {
-    slug: "admin-api",
-    title: "Admin API",
-    description: "Pointer to Management API",
-    order: 12,
-  },
-];
-
-const FILE_BY_SLUG: Record<string, string> = {
-  readme: "README.md",
-  overview: "overview.md",
-  "multi-tenancy": "multi-tenancy.md",
-  "content-model": "content-model.md",
-  "response-shapes": "response-shapes.md",
-  "public-api": "public-api.md",
-  forms: "forms.md",
-  "management-api": "management-api.md",
-  "demo-content-map": "demo-content-map.md",
-  "frontend-playbook": "frontend-playbook.md",
-  "typed-client": "typed-client.md",
-  "errors-and-gotchas": "errors-and-gotchas.md",
-  "admin-api": "admin-api.md",
+export type DocPage = DocMeta & {
+  body: string;
 };
 
-function docsRoot() {
-  const fromEnv = process.env.DOCS_DIR?.trim();
-  if (fromEnv) return path.resolve(fromEnv);
-  // apps/web → repo root → docs (local `next dev` / `next start` from apps/web)
-  return path.resolve(process.cwd(), "../../docs");
+function toMeta(entry: FlatEntry): DocMeta {
+  return {
+    slug: fieldString(entry, "slug", entry.slug) || entry.slug,
+    title: fieldString(entry, "title", entry.slug),
+    description: fieldString(entry, "description"),
+    order: fieldNumber(entry, "sortOrder", 0),
+  };
 }
 
-export function getDocMeta(slug: string): DocMeta | undefined {
-  return DOC_CATALOG.find((d) => d.slug === slug);
+/** Published documentation entries from CMS content type `doc`. */
+export async function listDocs(): Promise<DocMeta[]> {
+  const entries = await listType("doc", 100);
+  return entries.map((entry) => toMeta(entry));
 }
 
-export async function readDocMarkdown(slug: string): Promise<string | null> {
-  const file = FILE_BY_SLUG[slug];
-  if (!file) return null;
-  const full = path.join(docsRoot(), file);
-  try {
-    return await fs.readFile(full, "utf8");
-  } catch {
-    return null;
-  }
+export async function getDocMeta(slug: string): Promise<DocMeta | null> {
+  const entry = await getEntry("doc", slug);
+  return entry ? toMeta(entry) : null;
 }
 
-export function rewriteDocLinks(markdown: string): string {
-  return markdown
-    .replace(/\]\(\.\/README\.md\)/gi, "](/docs)")
-    .replace(/\]\(\.\/([a-z0-9-]+)\.md\)/gi, "](/docs/$1)")
-    .replace(/\]\(([a-z0-9-]+)\.md\)/gi, "](/docs/$1)");
+export async function getDoc(slug: string): Promise<DocPage | null> {
+  const entry = await getEntry("doc", slug);
+  if (!entry) return null;
+  const meta = toMeta(entry);
+  const body = fieldString(entry, "body");
+  if (!body.trim()) return null;
+  return { ...meta, body };
 }

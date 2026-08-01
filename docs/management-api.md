@@ -204,6 +204,65 @@ Response: `{ url, filename, mimeType, size }`. Store `url` in a `media` entry fi
 
 ---
 
+## Content packages (export / import)
+
+Admin-only ZIP packages for moving content between websites or Aurora instances.
+
+### Package layout (`formatVersion: 1`)
+
+```
+aurora-package.zip
+  manifest.json      # formatVersion, exportedAt, sourceSiteKey, selections
+  content.json       # { contentTypes: [...] } — same shape as provision
+  forms.json         # { forms: [...] } — form definitions + fields (no submissions)
+  media-map.json     # [{ fromUrl, path }] mapping original URLs → media/…
+  media/…            # binary image files referenced by entries
+```
+
+### Export
+
+```http
+POST /api/v1/admin/packages/export
+Authorization: Bearer <jwt|aur_…>
+Content-Type: application/json
+```
+
+```json
+{
+  "contentTypeApiIds": ["doc", "page"],
+  "entrySlugsByType": {
+    "doc": ["readme", "overview", "public-api"]
+  },
+  "formApiIds": ["contact"],
+  "includeMedia": true
+}
+```
+
+`entrySlugsByType` is optional per content type: if omitted for a type, **all** entries are exported; if present (even as `[]`), only those slugs are included. The type schema is always exported for each selected `contentTypeApiId`.
+
+Response: `application/zip` attachment. Requires **admin** role on the active website.
+
+### Import
+
+```http
+POST /api/v1/admin/packages/import
+Authorization: Bearer <jwt|aur_…>
+Content-Type: multipart/form-data
+```
+
+Fields:
+
+| Field | Value |
+|-------|--------|
+| `file` | The package ZIP (max 50MB) |
+| `mode` | `overwrite` (update existing) or `skip` (only create missing) |
+
+Media files are rematerialized under the target website’s `/uploads/{websiteId}/` and entry field URLs are rewritten. Submissions, API tokens, members, and website settings are not included.
+
+Studio: **Packages** in the admin nav (admin role).
+
+---
+
 ## Agent playbook: configure CMS while building a frontend
 
 1. **Register or pick an account** (or use demo credentials locally).

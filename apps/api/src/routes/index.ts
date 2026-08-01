@@ -34,6 +34,7 @@ import {
 import { registerAiRoutes } from "../ai/routes.js";
 import { registerMediaRoutes } from "../media/routes.js";
 import { registerProvisionRoutes } from "./provision.js";
+import { registerPackageRoutes } from "./package.js";
 import { registerFormRoutes } from "./forms.js";
 
 function httpError(statusCode: number, message: string) {
@@ -55,6 +56,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await registerAiRoutes(app);
   await registerMediaRoutes(app);
   await registerProvisionRoutes(app);
+  await registerPackageRoutes(app);
   await registerFormRoutes(app);
 
   // --- Public (site key) ---

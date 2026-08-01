@@ -1038,6 +1038,10 @@ async function main() {
     "schema-driven-content",
   ]);
 
+  const { seedDocsForWebsite } = await import("./seed-docs.js");
+  const docCount = await seedDocsForWebsite(uid);
+  console.log(`Seeded ${docCount} documentation entries (content type doc).`);
+
   console.log(
     `Seed completed for ${DEMO_EMAIL} (password: ${DEMO_PASSWORD}, siteKey: ${DEMO_SITE_KEY}, apiToken: ${DEMO_API_TOKEN}).`,
   );

@@ -61,6 +61,26 @@ export type ListEntriesResult = {
   offset: number;
 };
 
+export type PackageApplyCounters = {
+  created: number;
+  updated: number;
+  skipped: number;
+};
+
+export type PackageImportResult = {
+  ok: true;
+  mode: "overwrite" | "skip";
+  formatVersion: number;
+  sourceSiteKey: string | null;
+  contentTypes: PackageApplyCounters;
+  fields: PackageApplyCounters;
+  entries: PackageApplyCounters;
+  forms: PackageApplyCounters;
+  formFields: PackageApplyCounters;
+  media: { imported: number; skipped: number };
+  errors: string[];
+};
+
 export class CmsApiError extends Error {
   constructor(
     message: string,
@@ -587,6 +607,112 @@ export class CmsClient {
       { method: "POST", body: JSON.stringify(input) },
       { auth: true },
     );
+  }
+
+  /**
+   * Export selected content types / forms / media as an Aurora package ZIP.
+   */
+  async exportPackage(input: {
+    contentTypeApiIds?: string[];
+    entrySlugsByType?: Record<string, string[]>;
+    formApiIds?: string[];
+    includeMedia?: boolean;
+  }) {
+    if (!this.token) {
+      throw new CmsApiError("Authentication required", 401);
+    }
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${this.token}`);
+    headers.set("Content-Type", "application/json");
+
+    const res = await this.fetchImpl(
+      `${this.baseUrl}/api/v1/admin/packages/export`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          contentTypeApiIds: input.contentTypeApiIds ?? [],
+          entrySlugsByType: input.entrySlugsByType,
+          formApiIds: input.formApiIds ?? [],
+          includeMedia: input.includeMedia ?? true,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      let body: unknown = text;
+      try {
+        body = text ? JSON.parse(text) : undefined;
+      } catch {
+        /* keep text */
+      }
+      const message =
+        typeof body === "object" &&
+        body &&
+        "message" in body &&
+        typeof (body as { message: unknown }).message === "string"
+          ? (body as { message: string }).message
+          : res.statusText || "Export failed";
+      throw new CmsApiError(message, res.status, body);
+    }
+
+    const disposition = res.headers.get("Content-Disposition") ?? "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] ?? "aurora-package.zip";
+    const blob = await res.blob();
+    return { blob, filename };
+  }
+
+  /**
+   * Import an Aurora package ZIP into the active website.
+   */
+  async importPackage(
+    file: File | Blob,
+    options: { mode: "overwrite" | "skip"; filename?: string },
+  ) {
+    if (!this.token) {
+      throw new CmsApiError("Authentication required", 401);
+    }
+    const form = new FormData();
+    const name =
+      options.filename ??
+      (file instanceof File && file.name ? file.name : "aurora-package.zip");
+    form.append("file", file, name);
+    form.append("mode", options.mode);
+
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${this.token}`);
+
+    const res = await this.fetchImpl(
+      `${this.baseUrl}/api/v1/admin/packages/import`,
+      {
+        method: "POST",
+        headers,
+        body: form,
+      },
+    );
+
+    const text = await res.text();
+    let body: unknown = undefined;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+    }
+    if (!res.ok) {
+      const message =
+        typeof body === "object" &&
+        body &&
+        "message" in body &&
+        typeof (body as { message: unknown }).message === "string"
+          ? (body as { message: string }).message
+          : res.statusText || "Import failed";
+      throw new CmsApiError(message, res.status, body);
+    }
+    return body as PackageImportResult;
   }
 
   // --- Forms (public) ---
