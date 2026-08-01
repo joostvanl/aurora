@@ -14,7 +14,10 @@ export type ApiErrorCode =
   | "CONFLICT"
   | "NOT_FOUND"
   | "BAD_REQUEST"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  | "LOCALE_NOT_ENABLED"
+  | "LOCALE_IN_USE"
+  | "TRANSLATION_EXISTS";
 
 export type ApiIssue = {
   path: Array<string | number>;
