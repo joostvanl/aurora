@@ -37,6 +37,9 @@ services:
       CMS_AI_MODEL: ${CMS_AI_MODEL:-}
     volumes:
       - aurora_uploads:/data/uploads
+    # Host localhost only — Cloudflare on the Pi proxies these.
+    ports:
+      - "127.0.0.1:4000:4000"
     networks:
       - aurora
 
@@ -51,6 +54,8 @@ services:
       - api
     environment:
       NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
+    ports:
+      - "127.0.0.1:3001:3001"
     networks:
       - aurora
 
@@ -68,15 +73,22 @@ services:
       NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
       NEXT_PUBLIC_CMS_SITE_KEY: ${NEXT_PUBLIC_CMS_SITE_KEY}
       DOCS_DIR: /app/docs
+    # 3010: host :3000 is often taken (e.g. Grafana).
+    ports:
+      - "127.0.0.1:3010:3000"
     networks:
       - aurora
 
+  # Optional second tunnel (token mode). Prefer the Pi's existing
+  # /etc/cloudflared when one is already running:
+  #   docker compose --profile managed-tunnel up -d
   cloudflared:
+    profiles: ["managed-tunnel"]
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - api
       - admin

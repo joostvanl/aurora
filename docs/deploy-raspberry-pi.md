@@ -15,14 +15,16 @@ cp .env.example .env
 nano .env   # fill secrets and public HTTPS URLs
 ```
 
-4. Create a Cloudflare Tunnel (Zero Trust → Networks → Tunnels). Put the token in `CLOUDFLARE_TUNNEL_TOKEN`.
-5. Public hostnames on that tunnel (service names are Docker DNS names):
+4. **Tunnel:** either use an existing Pi `cloudflared` (recommended if you already have `/etc/cloudflared`), or start Compose with `--profile managed-tunnel` and a `CLOUDFLARE_TUNNEL_TOKEN`.
+5. Public hostnames (example with host cloudflared → localhost ports published by Compose):
 
 | Hostname | Service URL |
 |----------|-------------|
-| `api.your.domain` | `http://api:4000` |
-| `admin.your.domain` | `http://admin:3001` |
-| `www.your.domain` | `http://web:3000` |
+| `aurora-api.<domain>` | `http://localhost:4000` |
+| `aurora-admin.<domain>` | `http://localhost:3001` |
+| `aurora.<domain>` | `http://localhost:3010` |
+
+Host `:3000` is avoided (often Grafana). Web listens on **3010** on the Pi loopback.
 
 6. First start (or wait for the first Actions deploy):
 
