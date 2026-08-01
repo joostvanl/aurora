@@ -21,7 +21,11 @@ const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? "0.0.0.0";
 
 async function main() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: true,
+    // Cloudflare Tunnel / reverse proxies
+    trustProxy: true,
+  });
 
   await app.register(cors, {
     // Global CORS_ORIGINS (studio) ∪ Website.allowedOrigins (per tenant frontends).

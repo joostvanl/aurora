@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/tsconfig ./packages/tsconfig
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+COPY apps/admin/package.json ./apps/admin/
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+RUN pnpm --filter @cms/shared build \
+  && pnpm --filter @cms/api exec prisma generate \
+  && pnpm --filter @cms/api build
+
+FROM base AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd -r aurora && useradd -r -m -g aurora aurora
+
+COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=build /app/packages/tsconfig ./packages/tsconfig
+COPY --from=build /app/packages/shared ./packages/shared
+COPY --from=build /app/apps/api/package.json ./apps/api/
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/apps/api/prisma ./apps/api/prisma
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY deploy/api-entrypoint.sh /app/apps/api/entrypoint.sh
+RUN chmod +x /app/apps/api/entrypoint.sh \
+  && mkdir -p /data/uploads \
+  && chown -R aurora:aurora /app /data/uploads
+
+USER aurora
+WORKDIR /app
+ENV UPLOADS_DIR=/data/uploads
+ENV HOST=0.0.0.0
+ENV PORT=4000
+EXPOSE 4000
+ENTRYPOINT ["/app/apps/api/entrypoint.sh"]

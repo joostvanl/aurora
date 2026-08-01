@@ -26,8 +26,10 @@ function httpError(statusCode: number, message: string) {
   return err;
 }
 
-/** Monorepo-root `uploads/` (gitignored). */
+/** Uploads root: `UPLOADS_DIR` in containers, else monorepo-root `uploads/`. */
 export function uploadsRootDir(): string {
+  const fromEnv = process.env.UPLOADS_DIR?.trim();
+  if (fromEnv) return path.resolve(fromEnv);
   const here = path.dirname(fileURLToPath(import.meta.url));
   return path.resolve(here, "../../../../uploads");
 }

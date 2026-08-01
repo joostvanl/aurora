@@ -40,6 +40,9 @@ Open:
 - Admin: http://localhost:3001
 - API health: http://localhost:4000/health
 
+### Production (Raspberry Pi + Cloudflare Tunnel)
+
+See [docs/deploy-raspberry-pi.md](./docs/deploy-raspberry-pi.md). Stack lives under `deploy/` (Docker Compose). Pushes to `main` deploy via GitHub Actions over SSH.
 The website at `:3000` is the **Aurora product site** (not a dummy brochure). Marketing content comes from the CMS; the full technical instruction set lives in `docs/` and is served at `/docs`.
 
 ### Auth (multi-tenant)

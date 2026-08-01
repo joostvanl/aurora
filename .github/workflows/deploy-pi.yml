@@ -1,0 +1,42 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pi
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.PI_HOST }}
+          username: ${{ secrets.PI_USER }}
+          key: ${{ secrets.PI_SSH_KEY }}
+          port: ${{ secrets.PI_SSH_PORT }}
+          script_stop: true
+          command_timeout: 50m
+          envs: PI_APP_DIR
+          script: |
+            set -euo pipefail
+            APP_DIR="${PI_APP_DIR:-$HOME/aurora}"
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "Missing clone at $APP_DIR — see docs/deploy-raspberry-pi.md"
+              exit 1
+            fi
+            if [ ! -f "$APP_DIR/deploy/.env" ]; then
+              echo "Missing $APP_DIR/deploy/.env — copy from deploy/.env.example first"
+              exit 1
+            fi
+            chmod +x "$APP_DIR/deploy/remote-update.sh" "$APP_DIR/deploy/api-entrypoint.sh"
+            "$APP_DIR/deploy/remote-update.sh"
+        env:
+          PI_APP_DIR: ${{ secrets.PI_APP_DIR }}

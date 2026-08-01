@@ -20,6 +20,7 @@ These files are also published on the product site at **`/docs`**.
 | [typed-client.md](./typed-client.md) | `@cms/shared` client |
 | [errors-and-gotchas.md](./errors-and-gotchas.md) | Common failures |
 | [admin-api.md](./admin-api.md) | Optional write API |
+| [deploy-raspberry-pi.md](./deploy-raspberry-pi.md) | Pi + Docker + Cloudflare + GitHub Actions |
 
 ## Absolute rules
 

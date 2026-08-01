@@ -107,7 +107,9 @@ const FILE_BY_SLUG: Record<string, string> = {
 };
 
 function docsRoot() {
-  // apps/web → repo root → docs
+  const fromEnv = process.env.DOCS_DIR?.trim();
+  if (fromEnv) return path.resolve(fromEnv);
+  // apps/web → repo root → docs (local `next dev` / `next start` from apps/web)
   return path.resolve(process.cwd(), "../../docs");
 }
 

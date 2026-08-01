@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/tsconfig ./packages/tsconfig
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+COPY apps/admin/package.json ./apps/admin/
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+ARG NEXT_PUBLIC_CMS_API_URL
+ARG NEXT_PUBLIC_CMS_SITE_KEY
+ENV NEXT_PUBLIC_CMS_API_URL=$NEXT_PUBLIC_CMS_API_URL
+ENV NEXT_PUBLIC_CMS_SITE_KEY=$NEXT_PUBLIC_CMS_SITE_KEY
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+# Docs are rendered from the monorepo docs/ folder at build/runtime for /docs.
+COPY docs ./docs
+RUN mkdir -p apps/web/public \
+  && pnpm --filter @cms/shared build \
+  && pnpm --filter @cms/web build
+
+FROM node:20-bookworm-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN groupadd -r aurora && useradd -r -g aurora aurora
+COPY --from=build /app/apps/web/.next/standalone ./
+COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /app/apps/web/public ./apps/web/public
+COPY --from=build /app/docs ./docs
+USER aurora
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV DOCS_DIR=/app/docs
+EXPOSE 3000
+CMD ["node", "apps/web/server.js"]

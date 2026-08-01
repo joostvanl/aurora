@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+
+FROM node:20-bookworm-slim AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/tsconfig ./packages/tsconfig
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+COPY apps/admin/package.json ./apps/admin/
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+ARG NEXT_PUBLIC_CMS_API_URL
+ENV NEXT_PUBLIC_CMS_API_URL=$NEXT_PUBLIC_CMS_API_URL
+COPY packages/shared ./packages/shared
+COPY apps/admin ./apps/admin
+RUN mkdir -p apps/admin/public \
+  && pnpm --filter @cms/shared build \
+  && pnpm --filter @cms/admin build
+
+FROM node:20-bookworm-slim AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN groupadd -r aurora && useradd -r -g aurora aurora
+COPY --from=build /app/apps/admin/.next/standalone ./
+COPY --from=build /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=build /app/apps/admin/public ./apps/admin/public
+USER aurora
+ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
+EXPOSE 3001
+CMD ["node", "apps/admin/server.js"]

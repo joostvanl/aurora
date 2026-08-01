@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-cms}
+    volumes:
+      - aurora_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cms} -d ${POSTGRES_DB:-cms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - aurora
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cms}?schema=public
+      HOST: 0.0.0.0
+      PORT: "4000"
+      CMS_JWT_SECRET: ${CMS_JWT_SECRET:?set CMS_JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      UPLOADS_DIR: /data/uploads
+      CMS_AI_BASE_URL: ${CMS_AI_BASE_URL:-}
+      CMS_AI_API_KEY: ${CMS_AI_API_KEY:-}
+      CMS_AI_MODEL: ${CMS_AI_MODEL:-}
+    volumes:
+      - aurora_uploads:/data/uploads
+    networks:
+      - aurora
+
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+      args:
+        NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
+    networks:
+      - aurora
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
+        NEXT_PUBLIC_CMS_SITE_KEY: ${NEXT_PUBLIC_CMS_SITE_KEY}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_CMS_API_URL: ${NEXT_PUBLIC_CMS_API_URL}
+      NEXT_PUBLIC_CMS_SITE_KEY: ${NEXT_PUBLIC_CMS_SITE_KEY}
+      DOCS_DIR: /app/docs
+    networks:
+      - aurora
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
+      - admin
+      - web
+    networks:
+      - aurora
+
+volumes:
+  aurora_pgdata:
+  aurora_uploads:
+
+networks:
+  aurora:
+    driver: bridge
