@@ -61,21 +61,15 @@ export async function buildFrontendAgentBrief(
   );
 
   let typeApiIds = collectAffectedTypeApiIds(schemaCalls);
-  if (!typeApiIds.length) {
-    // Fall back: list all types so the frontend agent still has a snapshot
-    const all = await prisma.contentType.findMany({
-      where: { websiteId },
-      select: { apiId: true },
-      orderBy: { name: "asc" },
-    });
-    typeApiIds = all.map((t) => t.apiId);
-  }
+  // No fallback to “all types” — brief stays scoped to what actually changed.
 
-  const types = await prisma.contentType.findMany({
-    where: { websiteId, apiId: { in: typeApiIds } },
-    include: { fields: { orderBy: { sortOrder: "asc" } } },
-    orderBy: { name: "asc" },
-  });
+  const types = typeApiIds.length
+    ? await prisma.contentType.findMany({
+        where: { websiteId, apiId: { in: typeApiIds } },
+        include: { fields: { orderBy: { sortOrder: "asc" } } },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   const modelBlocks = types.map((ct) => {
     const serialized = serializeContentType(ct);
@@ -131,7 +125,38 @@ export function replyHasFrontendBrief(reply: string): boolean {
   return reply.includes(FRONTEND_BRIEF_HEADING);
 }
 
+/** Remove any model-written brief; the server attaches the authoritative one. */
+export function stripFrontendBrief(reply: string): string {
+  const idx = reply.indexOf(FRONTEND_BRIEF_HEADING);
+  if (idx === -1) return reply;
+  return reply.slice(0, idx).trimEnd();
+}
+
 export function mergeFrontendBrief(reply: string, brief: string): string {
-  if (replyHasFrontendBrief(reply)) return reply;
-  return `${reply.trim()}\n\n${brief}`;
+  const base = stripFrontendBrief(reply);
+  if (!base) return brief;
+  return `${base.trim()}\n\n${brief}`;
+}
+
+/**
+ * True when the latest user message clearly approves a pending structural change.
+ * Used to gate content-type / field mutations.
+ */
+export function userConfirmedSchemaChange(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  if (!text) return false;
+
+  // Explicit approval phrases (NL + EN). Short confirmations after a proposal, or
+  // approval combined with the structural request in one message.
+  return (
+    /^(ja|yes|yep|yeah|ok|okay|akkoord|prima|goed|sure|do it|go ahead|proceed|bevestig|bevestigd|approved?|lgtm)\b[.!]*$/i.test(
+      text,
+    ) ||
+    /\b(ja|yes|ok|okay|akkoord|prima|sure|go\s+ahead|doe\s+maar|voer\s+(het\s+)?door|bevestig(d|ing)?|i\s+confirm|confirmed|approved?)\b[\s\S]{0,80}\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan|schema|content\s*type|veld|field)\b/i.test(
+      text,
+    ) ||
+    /\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan)\b[\s\S]{0,80}\b(ja|yes|ok|okay|akkoord|bevestig(d|ing)?|confirmed|approved?)\b/i.test(
+      text,
+    )
+  );
 }

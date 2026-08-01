@@ -75,7 +75,7 @@ The studio **AI dock** (right side, every page) operates forms with the same too
 
 Ask e.g. “Summariseer de contact-inzendingen” or “Voeg een phone-veld toe aan contact”.
 
-After **content type / field** schema changes, the assistant appends a **Frontend agent brief (copy-paste)** block so you can paste instructions into a frontend coding agent to update the website.
+After **approved content-type / field** schema changes (not routine entry edits), the assistant appends a **Frontend agent brief (copy-paste)** block so you can paste instructions into a frontend coding agent. The assistant must ask before making those structural changes.
 
 ---
 

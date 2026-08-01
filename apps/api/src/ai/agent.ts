@@ -16,9 +16,12 @@ import {
   buildFrontendAgentBrief,
   FRONTEND_BRIEF_HEADING,
   mergeFrontendBrief,
+  stripFrontendBrief,
+  userConfirmedSchemaChange,
 } from "./frontendBrief.js";
 import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
 import { buildWebsiteKnowledge } from "./websiteContext.js";
+import { CONTENT_SCHEMA_TOOLS } from "./tools.js";
 
 const MAX_STEPS = 12;
 
@@ -80,13 +83,17 @@ Editing rules (critical):
 9. Richtext fields MUST be HTML, never Markdown. Use tags like <p>, <h2>, <ul>/<li>, <strong>, <em>, <a>, <code>. Do not write # headings, **bold**, - lists, or \`\`\` fences in richtext values. When patching existing content, match the surrounding HTML style.
 10. Prefer acting on the current screen context (entry/form/type) when the user says "this", "here", or is vague.
 
-Frontend handoff (critical after schema/structure changes):
-1. Whenever you create/update/delete a content type or field (new structure or schema change), end your reply with a practical brief the user can copy-paste into a **frontend coding agent**.
-2. Start that section exactly with this heading line:
-${FRONTEND_BRIEF_HEADING}
-3. The brief must be self-contained: what changed, current type/field apiIds, how to fetch (\`x-site-key\`, \`entry.fields.<apiId>\`), suggested routes/lists, publish rules, and explicit do-nots (no invented fields; richtext is HTML).
-4. Write the brief as instructions TO the frontend agent (imperative), not as chat to the CMS user.
-5. Keep a short human summary ABOVE the brief for the CMS user; put the long copy-paste block last.
+Frontend handoff (only after real content-structure changes):
+1. Do **not** invent or write a "${FRONTEND_BRIEF_HEADING}" section yourself. The server attaches that brief only when content-type/field tools actually succeed in this turn.
+2. Entry/content edits, publish, forms inbox, and copywriting must **never** include a frontend agent brief.
+3. After an approved schema change, keep your human reply short; the server appends the copy-paste brief when appropriate.
+
+Structural / schema changes (critical — ask first):
+1. Creating, updating, or deleting content types or fields changes the CMS structure. You MUST ask the user for explicit approval and wait for their confirmation before calling those tools.
+2. In the approval request, briefly state what you plan to change (type/field apiIds and why). Do not call create_content_type / update_content_type / delete_content_type / create_field / update_field / delete_field until they confirm.
+3. Confirmation examples: "ja", "ok", "akkoord", "voer door", "yes go ahead". Without that, structure tools are blocked by the server.
+4. Entry create/update/publish and form submission triage do **not** need this extra approval step (unless the user also asked for a schema change).
+5. Prefer existing content types when the user only wants pages/posts/content — do not invent new types unless they clearly want a schema change and approve it.
 
 Reply formatting (critical):
 1. Reply in Markdown (headings, lists, bold, code). The studio renders Markdown.
@@ -133,6 +140,7 @@ export async function runAiChat(input: {
 
   const ensureAiSnapshot = createAiSnapshotGuard();
   let versionCreated: AiChatResponse["versionCreated"] = null;
+  const schemaChangeConfirmed = userConfirmedSchemaChange(input.message);
 
   const messages: ChatMessage[] = [
     {
@@ -181,6 +189,7 @@ export async function runAiChat(input: {
       const result = await executeAiTool(call.function.name, args, {
         websiteId: input.websiteId,
         role: input.role,
+        schemaChangeConfirmed,
         ensureAiSnapshot: async (entryId, label) => {
           const version = await ensureAiSnapshot(entryId, label);
           if (version && !versionCreated) {
@@ -210,14 +219,22 @@ export async function runAiChat(input: {
       ? "Applied changes with tools."
       : "No changes were applied.");
 
+  // Never keep a model-authored brief; only the server may attach one after
+  // successful content-type/field mutations.
+  reply = stripFrontendBrief(reply);
   reply = ensureStudioMarkdownLinks(reply, toolCalls);
 
-  const frontendBrief = await buildFrontendAgentBrief(
-    input.websiteId,
-    toolCalls,
+  const schemaMutations = toolCalls.filter(
+    (t) => t.ok && CONTENT_SCHEMA_TOOLS.has(t.name),
   );
-  if (frontendBrief) {
-    reply = mergeFrontendBrief(reply, frontendBrief);
+  if (schemaMutations.length) {
+    const frontendBrief = await buildFrontendAgentBrief(
+      input.websiteId,
+      toolCalls,
+    );
+    if (frontendBrief) {
+      reply = mergeFrontendBrief(reply, frontendBrief);
+    }
   }
 
   let entry: AiChatResponse["entry"];

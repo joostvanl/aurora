@@ -675,6 +675,8 @@ export async function executeAiTool(
   ctx: {
     websiteId: string;
     role: WebsiteRole;
+    /** Explicit user approval required before content-type / field mutations. */
+    schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
   },
 ): Promise<ToolResult> {
@@ -690,6 +692,16 @@ export async function executeAiTool(
       name,
       ok: false,
       summary: `Permission denied: "${name}" requires builder or admin role`,
+    };
+  }
+
+  if (CONTENT_SCHEMA_TOOLS.has(name) && !ctx.schemaChangeConfirmed) {
+    return {
+      name,
+      ok: false,
+      summary:
+        "Blocked: content-structure changes need explicit user approval first. Explain the planned content-type/field change, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead).",
+      data: { needsConfirmation: true, tool: name },
     };
   }
 
