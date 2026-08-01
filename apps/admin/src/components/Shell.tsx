@@ -203,13 +203,9 @@ function ShellFrame({
           )}
           <Link href="/forms">Forms</Link>
           {(user?.role === "builder" || user?.role === "admin") && (
-            <Link href="/tokens">API tokens</Link>
+            <Link href="/utilities">Utilities</Link>
           )}
-          {showAi && <Link href="/ai">AI settings</Link>}
-          {isAdmin && <Link href="/website">Website</Link>}
-          {isAdmin && <Link href="/members">Members</Link>}
-          {isAdmin && <Link href="/packages">Packages</Link>}
-          <Link href="/select-website">Websites</Link>
+          <Link href="/settings">Settings</Link>
           <div className="nav-section">Entries</div>
           {navTypes.map((t) => (
             <Link key={t.apiId} href={`/entries/${t.apiId}`}>

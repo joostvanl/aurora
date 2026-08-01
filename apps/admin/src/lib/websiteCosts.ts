@@ -13,21 +13,14 @@ function hashSeed(input: string): number {
   return h;
 }
 
-/** Stable illustrative usage for a website until real metering exists. */
+/** Stable illustrative page-view usage until real metering exists. */
 export function estimateWebsiteUsage(websiteId: string) {
   const seed = hashSeed(websiteId || "default");
   const pageViews = 18_000 + (seed % 90_000);
-  const aiTokens = 80_000 + (seed % 420_000);
-  /** Rough blended provider rate (~$0.50 / 1M tokens → €0.0005 / 1k). */
-  const aiProviderEurPer1kTokens = 0.012;
-  const aiProviderEstimateEur =
-    Math.round((aiTokens / 1000) * aiProviderEurPer1kTokens * 100) / 100;
 
   return {
     pageViews,
     pageViewBlocks: Math.ceil(pageViews / 1000),
-    aiTokens,
-    aiProviderEstimateEur,
   };
 }
 
@@ -41,21 +34,34 @@ export function formatEur(amount: number): string {
 export function buildWebsiteCostBreakdown(input: {
   websiteId: string;
   seatCount: number;
+  aiTokens?: number;
+  aiCostPerTokenEur?: number;
+  aiEstimatedCostEur?: number;
 }) {
   const seats = Math.max(1, input.seatCount);
   const usage = estimateWebsiteUsage(input.websiteId);
+  const aiTokens = Math.max(0, input.aiTokens ?? 0);
+  const costPerToken = Math.max(0, input.aiCostPerTokenEur ?? 0);
+  const ai =
+    input.aiEstimatedCostEur != null
+      ? input.aiEstimatedCostEur
+      : Math.round(aiTokens * costPerToken * 1_000_000) / 1_000_000;
 
   const website = WEBSITE_COST_RATES.websitePerMonthEur;
   const seatsTotal = seats * WEBSITE_COST_RATES.seatPerMonthEur;
   const pageViewsTotal =
     usage.pageViewBlocks * WEBSITE_COST_RATES.perThousandPageViewsEur;
-  const ai = usage.aiProviderEstimateEur;
   const auroraSubtotal = website + seatsTotal + pageViewsTotal;
   const total = auroraSubtotal + ai;
 
   return {
     seats,
-    usage,
+    usage: {
+      ...usage,
+      aiTokens,
+      aiCostPerTokenEur: costPerToken,
+      aiProviderEstimateEur: ai,
+    },
     lines: [
       {
         id: "website",
@@ -80,10 +86,13 @@ export function buildWebsiteCostBreakdown(input: {
       },
       {
         id: "ai",
-        label: "AI tokens (provider)",
-        detail: `${usage.aiTokens.toLocaleString("nl-NL")} tokens · passthrough`,
+        label: "AI tokens",
+        detail: `${aiTokens.toLocaleString("nl-NL")} tokens × ${costPerToken.toLocaleString("en-US", { maximumFractionDigits: 12 })} EUR`,
         amount: ai,
-        note: "Billed by your model provider, not Aurora",
+        note:
+          aiTokens === 0
+            ? "No AI usage recorded this month yet"
+            : "Actual usage this month × configured cost per token",
       },
     ],
     auroraSubtotal,

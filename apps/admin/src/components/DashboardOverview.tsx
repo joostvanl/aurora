@@ -18,6 +18,9 @@ type DashboardState = {
   websiteId: string;
   seatCount: number;
   canManageMembers: boolean;
+  aiTokens: number;
+  aiCostPerTokenEur: number;
+  aiEstimatedCostEur: number;
 };
 
 const INITIAL_STATE: DashboardState = {
@@ -30,6 +33,9 @@ const INITIAL_STATE: DashboardState = {
   websiteId: "unknown",
   seatCount: 1,
   canManageMembers: false,
+  aiTokens: 0,
+  aiCostPerTokenEur: 0,
+  aiEstimatedCostEur: 0,
 };
 
 export function DashboardOverview() {
@@ -80,6 +86,9 @@ export function DashboardOverview() {
             websiteId: me.user.websiteId ?? "unknown",
             seatCount,
             canManageMembers,
+            aiTokens: ai.usage?.totalTokens ?? 0,
+            aiCostPerTokenEur: ai.costPerTokenEur ?? 0,
+            aiEstimatedCostEur: ai.usage?.estimatedCostEur ?? 0,
           });
         }
       } catch {
@@ -114,6 +123,9 @@ export function DashboardOverview() {
     ? buildWebsiteCostBreakdown({
         websiteId: state.websiteId,
         seatCount: state.seatCount,
+        aiTokens: state.aiTokens,
+        aiCostPerTokenEur: state.aiCostPerTokenEur,
+        aiEstimatedCostEur: state.aiEstimatedCostEur,
       })
     : null;
 
@@ -198,8 +210,7 @@ export function DashboardOverview() {
                 </h2>
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                   Estimated monthly bill for <strong>{state.websiteName}</strong>{" "}
-                  — variable pricing (website + seats + page views + AI
-                  provider).
+                  — website + seats + page views + metered AI tokens.
                 </p>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -259,8 +270,9 @@ export function DashboardOverview() {
                 className="muted"
                 style={{ fontSize: "0.85rem", maxWidth: "36rem" }}
               >
-                Aurora subtotal {formatEur(costs.auroraSubtotal)}. AI tokens are
-                settled on your model provider invoice
+                Aurora subtotal {formatEur(costs.auroraSubtotal)}. AI cost uses
+                recorded token usage × the rate in{" "}
+                <Link href="/ai">AI settings</Link>
                 {state.canManageMembers ? (
                   <>
                     {" · "}

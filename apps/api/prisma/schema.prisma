@@ -70,6 +70,7 @@ model Website {
   forms        Form[]
   settings     Setting[]
   apiTokens    ApiToken[]
+  aiUsageEvents AiUsageEvent[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -188,6 +189,22 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@unique([websiteId, key])
+}
+
+/** One LLM chat-completion call’s token usage for metering. */
+model AiUsageEvent {
+  id               String   @id @default(cuid())
+  websiteId        String
+  website          Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  userId           String?
+  source           String
+  model            String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([websiteId, createdAt])
 }
 
 model Form {

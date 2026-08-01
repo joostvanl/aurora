@@ -86,6 +86,19 @@ export const AiStatusSchema = z.object({
   apiKeyConfigured: z.boolean(),
   apiKeyPreview: z.string().nullable(),
   source: z.enum(["settings", "none"]),
+  /** EUR estimated cost per token for this website. */
+  costPerTokenEur: z.number().nonnegative(),
+  usage: z
+    .object({
+      periodFrom: z.string(),
+      periodTo: z.string(),
+      callCount: z.number().int().nonnegative(),
+      promptTokens: z.number().int().nonnegative(),
+      completionTokens: z.number().int().nonnegative(),
+      totalTokens: z.number().int().nonnegative(),
+      estimatedCostEur: z.number().nonnegative(),
+    })
+    .optional(),
 });
 
 export type AiStatus = z.infer<typeof AiStatusSchema>;
@@ -96,6 +109,8 @@ export const AiConfigUpdateSchema = z.object({
   model: z.string().optional(),
   /** Clear stored API key and fall back to env */
   clearApiKey: z.boolean().optional(),
+  /** EUR per token; null clears to default */
+  costPerTokenEur: z.union([z.number().nonnegative(), z.null()]).optional(),
 });
 
 export type AiConfigUpdate = z.input<typeof AiConfigUpdateSchema>;

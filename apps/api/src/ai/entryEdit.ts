@@ -98,6 +98,7 @@ async function requestPatchPlan(options: {
   mode: "write" | "optimize";
   instruction: string;
   contentTypeApiId: string;
+  websiteId: string;
   entry: {
     id: string;
     slug: string;
@@ -166,6 +167,10 @@ Rules:
       { role: "user", content: user },
     ],
     responseFormatJson: true,
+    meter: {
+      websiteId: options.websiteId,
+      source: options.mode === "optimize" ? "entry_optimize" : "entry_write",
+    },
   });
 
   const content = completion.message.content ?? "";
@@ -222,6 +227,7 @@ export async function runEntryContentEdit(input: {
     mode: input.mode,
     instruction: input.message,
     contentTypeApiId: input.contentTypeApiId,
+    websiteId: input.websiteId,
     websiteContext,
     entry: {
       id: entry.id,

@@ -3,19 +3,14 @@ import { AiChatRequestSchema, AiConfigUpdateSchema } from "@cms/shared";
 import { requireWebsite, websiteIdFrom } from "../auth/middleware.js";
 import { RolePermission } from "../auth/roles.js";
 import { runAiChat } from "../ai/agent.js";
-import {
-  resolveAiConfig,
-  toPublicAiStatus,
-  updateAiConfig,
-} from "../ai/config.js";
+import { toPublicAiStatus, updateAiConfig } from "../ai/config.js";
 
 export async function registerAiRoutes(app: FastifyInstance) {
   app.register(async (ai) => {
     ai.addHook("preHandler", requireWebsite(RolePermission.content));
 
     ai.get("/api/v1/admin/ai/status", async (request) => {
-      const config = await resolveAiConfig(websiteIdFrom(request));
-      return toPublicAiStatus(config);
+      return toPublicAiStatus(websiteIdFrom(request));
     });
 
     ai.put(
@@ -23,8 +18,8 @@ export async function registerAiRoutes(app: FastifyInstance) {
       { preHandler: requireWebsite(RolePermission.admin) },
       async (request) => {
         const body = AiConfigUpdateSchema.parse(request.body);
-        const config = await updateAiConfig(websiteIdFrom(request), body);
-        return toPublicAiStatus(config);
+        await updateAiConfig(websiteIdFrom(request), body);
+        return toPublicAiStatus(websiteIdFrom(request));
       },
     );
 

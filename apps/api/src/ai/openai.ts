@@ -1,4 +1,9 @@
 import type { ResolvedAiConfig } from "./config.js";
+import {
+  recordAiUsage,
+  type AiUsageMeter,
+  type TokenUsage,
+} from "./usage.js";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -23,7 +28,34 @@ export type ChatTool = {
 export type ChatCompletionResult = {
   message: ChatMessage;
   model: string;
+  usage: TokenUsage;
 };
+
+function parseUsage(parsed: unknown): TokenUsage {
+  const usage =
+    parsed &&
+    typeof parsed === "object" &&
+    "usage" in parsed &&
+    (parsed as { usage?: unknown }).usage &&
+    typeof (parsed as { usage: unknown }).usage === "object"
+      ? ((parsed as { usage: Record<string, unknown> }).usage)
+      : null;
+
+  const promptTokens =
+    typeof usage?.prompt_tokens === "number" ? usage.prompt_tokens : 0;
+  const completionTokens =
+    typeof usage?.completion_tokens === "number" ? usage.completion_tokens : 0;
+  const totalTokens =
+    typeof usage?.total_tokens === "number"
+      ? usage.total_tokens
+      : promptTokens + completionTokens;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  };
+}
 
 export async function chatCompletion(options: {
   config: ResolvedAiConfig;
@@ -31,6 +63,8 @@ export async function chatCompletion(options: {
   tools?: ChatTool[];
   toolChoice?: "auto" | "required" | "none";
   responseFormatJson?: boolean;
+  /** When set, persist token usage for this website. */
+  meter?: AiUsageMeter;
 }): Promise<ChatCompletionResult> {
   const { config, messages, tools } = options;
   if (!config.baseUrl || !config.apiKey || !config.model) {
@@ -107,8 +141,26 @@ export async function chatCompletion(options: {
     });
   }
 
+  const model = (parsed as { model?: string }).model ?? config.model;
+  const usage = parseUsage(parsed);
+
+  if (options.meter) {
+    try {
+      await recordAiUsage({
+        websiteId: options.meter.websiteId,
+        userId: options.meter.userId,
+        source: options.meter.source,
+        model,
+        usage,
+      });
+    } catch {
+      // Metering must not break chat.
+    }
+  }
+
   return {
     message: choice,
-    model: (parsed as { model?: string }).model ?? config.model,
+    model,
+    usage,
   };
 }

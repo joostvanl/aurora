@@ -167,6 +167,11 @@ export async function runAiChat(input: {
       messages,
       tools: aiTools,
       toolChoice: "auto",
+      meter: {
+        websiteId: input.websiteId,
+        userId: input.userId,
+        source: "chat",
+      },
     });
     model = completion.model;
     const msg = completion.message;
