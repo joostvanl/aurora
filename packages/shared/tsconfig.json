@@ -1,0 +1,12 @@
+{
+  "extends": "@cms/tsconfig/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true
+  },
+  "include": ["src"]
+}

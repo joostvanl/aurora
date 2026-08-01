@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EntryStatus {
+  draft
+  published
+}
+
+enum FieldType {
+  text
+  textarea
+  richtext
+  boolean
+  datetime
+  number
+  slug
+  media
+}
+
+enum FormFieldType {
+  text
+  email
+  phone
+  textarea
+  number
+  select
+  radio
+  checkbox
+  honeypot
+}
+
+/// editor = content; builder = schema+content (no members/AI); admin = everything
+enum WebsiteRole {
+  editor
+  builder
+  admin
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  name         String?
+  memberships  Membership[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Website {
+  id           String         @id @default(cuid())
+  name         String
+  /** Optional internal note for studio admins (not public site chrome). */
+  description  String?
+  siteKey      String         @unique @default(cuid())
+  /**
+   * Browser origins allowed to call the API for this website (CORS).
+   * Example: ["http://localhost:5180", "https://app.example.com"]
+   * Merged with global CORS_ORIGINS (studio defaults) at runtime.
+   */
+  allowedOrigins String[]     @default([])
+  memberships  Membership[]
+  contentTypes ContentType[]
+  forms        Form[]
+  settings     Setting[]
+  apiTokens    ApiToken[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Membership {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  websiteId String
+  website   Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  role      WebsiteRole @default(editor)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, websiteId])
+  @@index([websiteId])
+}
+
+/// Long-lived management token for agents / automation (write API).
+/// Bound to a website; acts with admin privileges for that website.
+model ApiToken {
+  id         String    @id @default(cuid())
+  websiteId  String
+  website    Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  createdById String?
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([websiteId])
+}
+
+model ContentType {
+  id          String            @id @default(cuid())
+  websiteId   String
+  website     Website           @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  apiId       String
+  name        String
+  description String?
+  fields      FieldDefinition[]
+  entries     Entry[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([websiteId, apiId])
+}
+
+model FieldDefinition {
+  id            String            @id @default(cuid())
+  contentTypeId String
+  contentType   ContentType       @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
+  apiId         String
+  name          String
+  type          FieldType
+  required      Boolean           @default(false)
+  sortOrder     Int               @default(0)
+  values        EntryFieldValue[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([contentTypeId, apiId])
+  @@index([contentTypeId, sortOrder])
+}
+
+model Entry {
+  id            String            @id @default(cuid())
+  contentTypeId String
+  contentType   ContentType       @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
+  slug          String
+  status        EntryStatus       @default(draft)
+  locale        String            @default("en")
+  publishedAt   DateTime?
+  fieldValues   EntryFieldValue[]
+  versions      EntryVersion[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([contentTypeId, slug, locale])
+  @@index([contentTypeId, status])
+  @@index([contentTypeId, publishedAt])
+}
+
+model EntryFieldValue {
+  id      String          @id @default(cuid())
+  entryId String
+  entry   Entry           @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  fieldId String
+  field   FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  value   Json
+
+  @@unique([entryId, fieldId])
+  @@index([fieldId])
+}
+
+model EntryVersion {
+  id        String   @id @default(cuid())
+  entryId   String
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  label     String?
+  source    String
+  snapshot  Json
+  createdAt DateTime @default(now())
+
+  @@index([entryId, createdAt])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  websiteId String
+  website   Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([websiteId, key])
+}
+
+model Form {
+  id             String           @id @default(cuid())
+  websiteId      String
+  website        Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  apiId          String
+  name           String
+  description    String?
+  submitLabel    String           @default("Submit")
+  successMessage String           @default("Thanks — we received your message.")
+  enabled        Boolean          @default(true)
+  fields         FormField[]
+  submissions    FormSubmission[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([websiteId, apiId])
+}
+
+model FormField {
+  id          String        @id @default(cuid())
+  formId      String
+  form        Form          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  apiId       String
+  label       String
+  type        FormFieldType
+  required    Boolean       @default(false)
+  placeholder String?
+  helpText    String?
+  options     Json?
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([formId, apiId])
+  @@index([formId, sortOrder])
+}
+
+model FormSubmission {
+  id        String    @id @default(cuid())
+  formId    String
+  form      Form      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  payload   Json
+  meta      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([formId, createdAt])
+}

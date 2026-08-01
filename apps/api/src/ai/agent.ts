@@ -1,0 +1,239 @@
+import type {
+  AiChatContext,
+  AiChatMessage,
+  AiChatResponse,
+  AiToolCallResult,
+} from "@cms/shared";
+import { prisma } from "../db.js";
+import { entryInclude } from "../lib/entries.js";
+import { serializeEntry } from "../lib/serialize.js";
+import { createAiSnapshotGuard } from "../lib/versions.js";
+import { resolveAiConfig } from "./config.js";
+import { runEntryContentEdit } from "./entryEdit.js";
+import { chatCompletion, type ChatMessage } from "./openai.js";
+import { aiTools, executeAiTool } from "./tools.js";
+import {
+  buildFrontendAgentBrief,
+  FRONTEND_BRIEF_HEADING,
+  mergeFrontendBrief,
+} from "./frontendBrief.js";
+import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
+import { buildWebsiteKnowledge } from "./websiteContext.js";
+
+const MAX_STEPS = 12;
+
+async function buildSystemPrompt(
+  role: "editor" | "builder" | "admin",
+  websiteId: string,
+  context?: AiChatContext,
+) {
+  const lines: string[] = [
+    `User role: ${role} (tools already enforce limits; do not claim you can do actions this role cannot).`,
+  ];
+  if (context?.websiteName) lines.push(`Website: ${context.websiteName}`);
+  if (context?.pathname) lines.push(`Screen path: ${context.pathname}`);
+  if (context?.page) lines.push(`Screen: ${context.page}`);
+  if (context?.contentTypeApiId)
+    lines.push(`contentTypeApiId: ${context.contentTypeApiId}`);
+  if (context?.entryId) lines.push(`entryId: ${context.entryId}`);
+  if (context?.formApiId) lines.push(`formApiId: ${context.formApiId}`);
+  if (context?.mode && context.mode !== "general")
+    lines.push(`Requested mode: ${context.mode}`);
+
+  const focus =
+    lines.length > 1
+      ? `\nCurrent studio context:\n${lines.map((l) => `- ${l}`).join("\n")}`
+      : `\nCurrent studio context:\n- ${lines[0]}`;
+
+  const knowledge = await buildWebsiteKnowledge(websiteId, context);
+
+  return `You are Aurora CMS Assistant — an AI-first content operator for a headless CMS.
+
+You can inspect and mutate content types, fields, entries, publish state, and site content via tools.
+
+You also operate the Forms module (separate from content types):
+- Create/update/delete forms and their fields (text, email, phone, textarea, number, select, radio, checkbox, honeypot).
+- Inspect the submission inbox: use form_submission_stats for overviews, list_form_submissions / get_form_submission for details, then summarize themes, urgency, and notable messages for the editor.
+- Mark submissions read/unread or delete them when asked. Never delete forms or submissions unless the user clearly asks.
+
+Website knowledge (ground truth for THIS website — always use it):
+${knowledge}
+
+Creating content (critical — do this automatically):
+1. When the user asks to create, make, add, write, draft, or build a page, post, article, or other entry, you MUST persist it with tools in the same turn — never only reply with draft copy in chat.
+2. Use the schema and entry index above first. Call get_content_type only if you still need detail, then create_entry with slug + fields. Prefer content type apiId "page" for website pages and "post" for blog posts when those types exist.
+3. Put the written content into the entry fields (title, body/content, etc.) on create_entry. Use HTML for richtext fields. Do not wait for a second message like "now create it" or "save it".
+4. Default status is draft unless the user asks to publish. After create, briefly report slug, id, and status.
+5. If an entry with that slug already exists (see entry index), update it (str_replace / write_field) instead of creating a duplicate or only chatting.
+6. If the user is already on an entry editor (entryId in context / focused entry) and asks to write/rewrite that page, update that entry — do not create a duplicate unless they ask for a new page.
+7. Align new copy with site_settings (site name, tagline, CTA) and the tone of existing pages/posts in the knowledge block.
+
+Editing rules (critical):
+1. Prefer str_replace (find/replace) over rewriting entire fields — same principle as Cursor patches.
+2. old_string must uniquely identify the snippet unless replace_all=true.
+3. Use write_field only when a field is empty or a full rewrite is truly required.
+4. Read before write: use website knowledge first; get_entry / get_content_type / get_form when you need fresher or fuller data.
+5. Keep changes scoped to the user request. Do not delete types/entries/forms unless asked.
+6. After tools run, briefly summarize what changed (ids/slugs/fields) or what the inbox shows.
+7. Never invent API credentials or claim offline changes without tool results.
+8. Forms ≠ content entries. Do not try to store form submissions as entries.
+9. Richtext fields MUST be HTML, never Markdown. Use tags like <p>, <h2>, <ul>/<li>, <strong>, <em>, <a>, <code>. Do not write # headings, **bold**, - lists, or \`\`\` fences in richtext values. When patching existing content, match the surrounding HTML style.
+10. Prefer acting on the current screen context (entry/form/type) when the user says "this", "here", or is vague.
+
+Frontend handoff (critical after schema/structure changes):
+1. Whenever you create/update/delete a content type or field (new structure or schema change), end your reply with a practical brief the user can copy-paste into a **frontend coding agent**.
+2. Start that section exactly with this heading line:
+${FRONTEND_BRIEF_HEADING}
+3. The brief must be self-contained: what changed, current type/field apiIds, how to fetch (\`x-site-key\`, \`entry.fields.<apiId>\`), suggested routes/lists, publish rules, and explicit do-nots (no invented fields; richtext is HTML).
+4. Write the brief as instructions TO the frontend agent (imperative), not as chat to the CMS user.
+5. Keep a short human summary ABOVE the brief for the CMS user; put the long copy-paste block last.
+
+Reply formatting (critical):
+1. Reply in Markdown (headings, lists, bold, code). The studio renders Markdown.
+2. Whenever you mention a CMS entry/page/item you created or changed, link it with a studio path markdown link:
+   - Entry: [slug](/entries/{contentTypeApiId}/{entryId})
+   - Content type: [Name](/content-types/{apiId})
+   - Form: [Name](/forms/{apiId})
+3. Prefer the human label (slug or title) as link text. Always include the real ids from tool results — never invent ids.
+${focus}`;
+}
+
+export async function runAiChat(input: {
+  message: string;
+  websiteId: string;
+  userId: string;
+  role: "editor" | "builder" | "admin";
+  history?: AiChatMessage[];
+  context?: AiChatContext;
+}): Promise<AiChatResponse> {
+  // Entry write/optimize: deterministic JSON-patch path (works without tool-calling support).
+  if (
+    input.context?.entryId &&
+    input.context.contentTypeApiId &&
+    (input.context.mode === "write" || input.context.mode === "optimize")
+  ) {
+    return runEntryContentEdit({
+      message: input.message,
+      contentTypeApiId: input.context.contentTypeApiId,
+      entryId: input.context.entryId,
+      mode: input.context.mode,
+      websiteId: input.websiteId,
+    });
+  }
+
+  const config = await resolveAiConfig(input.websiteId);
+  if (!config.enabled || !config.apiKey || !config.baseUrl || !config.model) {
+    throw Object.assign(
+      new Error(
+        "AI is not configured for this website. An admin must set the provider in Admin → AI settings.",
+      ),
+      { statusCode: 503 },
+    );
+  }
+
+  const ensureAiSnapshot = createAiSnapshotGuard();
+  let versionCreated: AiChatResponse["versionCreated"] = null;
+
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content: await buildSystemPrompt(
+        input.role,
+        input.websiteId,
+        input.context,
+      ),
+    },
+    ...(input.history ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-20)
+      .map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: input.message },
+  ];
+
+  const toolCalls: AiToolCallResult[] = [];
+  let model = config.model;
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const completion = await chatCompletion({
+      config,
+      messages,
+      tools: aiTools,
+      toolChoice: "auto",
+    });
+    model = completion.model;
+    const msg = completion.message;
+    messages.push(msg);
+
+    const calls = msg.tool_calls ?? [];
+    if (!calls.length) {
+      break;
+    }
+
+    for (const call of calls) {
+      let args: unknown = {};
+      try {
+        args = call.function.arguments
+          ? JSON.parse(call.function.arguments)
+          : {};
+      } catch {
+        args = {};
+      }
+      const result = await executeAiTool(call.function.name, args, {
+        websiteId: input.websiteId,
+        role: input.role,
+        ensureAiSnapshot: async (entryId, label) => {
+          const version = await ensureAiSnapshot(entryId, label);
+          if (version && !versionCreated) {
+            versionCreated = {
+              id: version.id,
+              label: version.label,
+              createdAt: version.createdAt,
+            };
+          }
+          return version;
+        },
+      });
+      toolCalls.push(result);
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: JSON.stringify(result),
+      });
+    }
+  }
+
+  const assistantMessages = messages.filter((m) => m.role === "assistant");
+  const finalAssistant = [...assistantMessages].reverse().find((m) => m.content);
+  let reply =
+    finalAssistant?.content?.trim() ||
+    (toolCalls.some((t) => t.ok)
+      ? "Applied changes with tools."
+      : "No changes were applied.");
+
+  reply = ensureStudioMarkdownLinks(reply, toolCalls);
+
+  const frontendBrief = await buildFrontendAgentBrief(
+    input.websiteId,
+    toolCalls,
+  );
+  if (frontendBrief) {
+    reply = mergeFrontendBrief(reply, frontendBrief);
+  }
+
+  let entry: AiChatResponse["entry"];
+  if (input.context?.entryId) {
+    const full = await prisma.entry.findUnique({
+      where: { id: input.context.entryId },
+      include: entryInclude,
+    });
+    if (full) entry = serializeEntry(full);
+  }
+
+  return {
+    reply,
+    toolCalls,
+    model,
+    entry,
+    versionCreated,
+  };
+}
