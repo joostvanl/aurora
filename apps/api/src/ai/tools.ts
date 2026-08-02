@@ -22,6 +22,7 @@ import {
 import { serializeContentType, serializeEntry } from "../lib/serialize.js";
 import { applyStrReplace } from "./patches.js";
 import type { ChatTool } from "./openai.js";
+import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 
 /** Schema-mutating tools require builder+; everything else is content (editor+). */
 export const SCHEMA_TOOLS = new Set([
@@ -677,6 +678,30 @@ export const aiTools: ChatTool[] = [
           submissionId: { type: "string" },
         },
         required: ["formApiId", "submissionId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "fetch_url",
+      description:
+        "Fetch a public http(s) web page and return readable text plus outbound links. Use for research/scraping. Call again on relevant links from the previous result when you need more detail. Private/internal hosts are blocked.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "Absolute http or https URL to fetch",
+          },
+          maxChars: {
+            type: "number",
+            description:
+              "Optional max characters of extracted text (server-capped)",
+          },
+        },
+        required: ["url"],
         additionalProperties: false,
       },
     },
@@ -1491,6 +1516,31 @@ export async function executeAiTool(
           ok: true,
           summary: `Deleted submission ${submissionId}`,
         };
+      }
+      case "fetch_url": {
+        const url = str(rawArgs, "url");
+        if (!url) throw new Error("url required");
+        const maxChars = num(rawArgs, "maxChars");
+        try {
+          const data = await fetchPublicUrl(url, { maxChars });
+          let host = url;
+          try {
+            host = new URL(data.finalUrl).host;
+          } catch {
+            /* keep url */
+          }
+          return {
+            name,
+            ok: true,
+            summary: `Fetched ${host} (${data.links.length} links${data.truncated ? ", truncated" : ""})`,
+            data,
+          };
+        } catch (error) {
+          if (error instanceof WebFetchError) {
+            return { name, ok: false, summary: error.message };
+          }
+          throw error;
+        }
       }
       default:
         return {

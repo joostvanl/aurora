@@ -23,7 +23,7 @@ import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
 import { buildWebsiteKnowledge } from "./websiteContext.js";
 import { CONTENT_SCHEMA_TOOLS } from "./tools.js";
 
-const MAX_STEPS = 12;
+const MAX_STEPS = 16;
 
 async function buildSystemPrompt(
   role: "editor" | "builder" | "admin",
@@ -58,6 +58,13 @@ You also operate the Forms module (separate from content types):
 - Create/update/delete forms and their fields (text, email, phone, textarea, number, select, radio, checkbox, honeypot).
 - Inspect the submission inbox: use form_submission_stats for overviews, list_form_submissions / get_form_submission for details, then summarize themes, urgency, and notable messages for the editor.
 - Mark submissions read/unread or delete them when asked. Never delete forms or submissions unless the user clearly asks.
+
+Web research (fetch_url):
+1. When the user asks to research, scrape, gather info from the web, or reference a URL, use fetch_url.
+2. Start with the URL they gave (or the most relevant public page). The tool returns readable text plus outbound links.
+3. If you need more detail, call fetch_url again on the most relevant links from the previous result — multi-hop navigation is encouraged when it improves the answer.
+4. Stay focused: a few well-chosen pages, not an exhaustive crawl. Respect the tool-step budget; leave room for CMS write tools if the user also wants content created/updated.
+5. Private/internal hosts are blocked. If fetch_url fails, explain briefly and ask for another public URL. Do not invent page contents you did not fetch.
 
 Website knowledge (ground truth for THIS website — always use it):
 ${knowledge}
