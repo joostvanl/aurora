@@ -47,29 +47,16 @@ export function UtilitiesHub() {
   }
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
+    <div className="hub-grid">
       {visible.length === 0 ? (
-        <div className="panel">
-          <p className="muted" style={{ margin: 0 }}>
-            No utilities available for your role.
-          </p>
+        <div className="hub-card">
+          <p>No utilities available for your role.</p>
         </div>
       ) : (
         visible.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="panel"
-            style={{
-              display: "block",
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            <strong style={{ display: "block", marginBottom: "0.35rem" }}>
-              {item.title}
-            </strong>
-            <span className="muted">{item.description}</span>
+          <Link key={item.href} href={item.href} className="hub-card">
+            <strong>{item.title}</strong>
+            <p>{item.description}</p>
           </Link>
         ))
       )}

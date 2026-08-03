@@ -59,22 +59,11 @@ export function SettingsHub() {
   }
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
+    <div className="hub-grid">
       {visible.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className="panel"
-          style={{
-            display: "block",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          <strong style={{ display: "block", marginBottom: "0.35rem" }}>
-            {item.title}
-          </strong>
-          <span className="muted">{item.description}</span>
+        <Link key={item.href} href={item.href} className="hub-card">
+          <strong>{item.title}</strong>
+          <p>{item.description}</p>
         </Link>
       ))}
     </div>

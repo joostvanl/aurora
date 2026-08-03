@@ -127,6 +127,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function navActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function ShellFrame({
   children,
   user,
@@ -145,15 +150,39 @@ function ShellFrame({
   onSignOut: () => void;
 }) {
   const router = useRouter();
-  const { dockWidth } = useAiScreen();
+  const pathname = usePathname() ?? "/";
+  const { collapsed, setCollapsed, dockWidth } = useAiScreen();
   const isAdmin = user?.role === "admin";
   const showAi = Boolean(user?.websiteId);
   const [contentKey, setContentKey] = useState(0);
   const [navTypes, setNavTypes] = useState(types);
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     setNavTypes(types);
   }, [types]);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.classList.toggle("nav-open", navOpen);
+    document.body.classList.toggle("ai-open", !collapsed);
+    return () => {
+      document.body.classList.remove("nav-open", "ai-open");
+    };
+  }, [navOpen, collapsed]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setNavOpen(false);
+      if (!collapsed) setCollapsed(true);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [collapsed, setCollapsed]);
 
   useEffect(() => {
     return onAiStudioMutated(() => {
@@ -164,7 +193,6 @@ function ShellFrame({
         .catch(() => {
           /* keep current nav */
         });
-      // Remount page UI after refresh has a chance to deliver new RSC props.
       window.setTimeout(() => {
         setContentKey((k) => k + 1);
         router.refresh();
@@ -177,115 +205,150 @@ function ShellFrame({
       className="shell"
       style={{ ["--ai-dock" as string]: `${dockWidth}px` }}
     >
-      <aside className="sidebar">
-        <div className="brand">
-          Aurora
-          <span>Content studio</span>
-        </div>
+      <header className="topbar">
+        <button
+          className="topbar-btn topbar-btn--menu"
+          type="button"
+          aria-expanded={navOpen}
+          aria-controls="studio-nav"
+          onClick={() => setNavOpen((v) => !v)}
+        >
+          Menu
+        </button>
+        <Link className="topbar-brand" href="/">
+          <img src="/aurora-mark.png" alt="" width={28} height={28} />
+          <span>Aurora</span>
+        </Link>
         {user?.websiteName && (
-          <div
-            style={{
-              padding: "0 0.7rem 0.75rem",
-              fontSize: "0.85rem",
-              opacity: 0.9,
-            }}
-          >
-            <strong>{user.websiteName}</strong>
-            <div className="muted" style={{ fontSize: "0.75rem" }}>
-              {user.role}
-            </div>
+          <div className="topbar-meta" title={user.websiteName}>
+            {user.websiteName} · {user.role}
           </div>
         )}
-        <nav className="nav">
-          <Link href="/">Dashboard</Link>
-          {(user?.role === "builder" || user?.role === "admin") && (
-            <Link href="/content-types">Content types</Link>
-          )}
-          <Link href="/forms">Forms</Link>
-          {(user?.role === "builder" || user?.role === "admin") && (
-            <Link href="/utilities">Utilities</Link>
-          )}
-          <Link href="/settings">Settings</Link>
-          <div className="nav-section">Entries</div>
-          {navTypes.map((t) => (
-            <Link key={t.apiId} href={`/entries/${t.apiId}`}>
-              {t.name}
-            </Link>
-          ))}
-          {navTypes.length === 0 && (
-            <span
-              className="nav-section"
-              style={{ opacity: 0.7, textTransform: "none" }}
-            >
-              No types yet
-            </span>
-          )}
-        </nav>
-        <div style={{ marginTop: "auto", paddingTop: "1.5rem" }}>
-          {websites.length > 1 && (
-            <>
-              <div className="nav-section">Switch website</div>
-              <select
-                value={user?.websiteId ?? ""}
-                disabled={switchingWebsite}
-                onChange={(e) => onSwitchWebsite(e.target.value)}
-                style={{
-                  margin: "0 0.7rem 0.75rem",
-                  width: "calc(100% - 1.4rem)",
-                }}
-              >
-                {websites.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <div className="nav-section">Account</div>
-          <div
-            style={{ padding: "0 0.7rem", fontSize: "0.85rem", opacity: 0.85 }}
-          >
-            {user?.email}
-          </div>
-          {user?.siteKey && (
-            <div
-              style={{
-                padding: "0.35rem 0.7rem 0",
-                fontSize: "0.7rem",
-                opacity: 0.65,
-                wordBreak: "break-all",
-              }}
-              title="Public site key for this website"
-            >
-              siteKey: {user.siteKey}
-            </div>
-          )}
-          {!isAdmin && showAi && (
-            <div
-              className="muted"
-              style={{ padding: "0.5rem 0.7rem 0", fontSize: "0.7rem" }}
-            >
-              AI provider settings: admin only
-            </div>
-          )}
+        <div className="topbar-spacer" />
+        {showAi && (
           <button
-            className="btn btn-secondary"
+            className="topbar-btn"
             type="button"
-            style={{
-              margin: "0.75rem 0.7rem 0",
-              width: "calc(100% - 1.4rem)",
-            }}
-            onClick={onSignOut}
+            data-active={!collapsed ? "true" : undefined}
+            aria-pressed={!collapsed}
+            onClick={() => setCollapsed(!collapsed)}
           >
-            Sign out
+            AI
           </button>
-        </div>
-      </aside>
-      <main className="main" key={contentKey}>
-        {children}
-      </main>
-      <AiAssistantDock user={user} />
+        )}
+      </header>
+
+      <div className="shell-body">
+        <button
+          type="button"
+          className={`sidebar-backdrop${navOpen ? " is-open" : ""}`}
+          aria-label="Close menu"
+          onClick={() => setNavOpen(false)}
+        />
+
+        <aside
+          id="studio-nav"
+          className={`sidebar${navOpen ? " is-open" : ""}`}
+        >
+          <div className="sidebar-site">
+            <strong>{user?.websiteName ?? "Website"}</strong>
+            <span className="muted">{user?.role}</span>
+          </div>
+
+          <nav className="nav">
+            <Link href="/" data-active={navActive(pathname, "/")}>
+              Dashboard
+            </Link>
+            {(user?.role === "builder" || user?.role === "admin") && (
+              <Link
+                href="/content-types"
+                data-active={navActive(pathname, "/content-types")}
+              >
+                Content types
+              </Link>
+            )}
+            <Link href="/forms" data-active={navActive(pathname, "/forms")}>
+              Forms
+            </Link>
+            {(user?.role === "builder" || user?.role === "admin") && (
+              <Link
+                href="/utilities"
+                data-active={navActive(pathname, "/utilities")}
+              >
+                Utilities
+              </Link>
+            )}
+            <Link
+              href="/settings"
+              data-active={navActive(pathname, "/settings")}
+            >
+              Settings
+            </Link>
+            <div className="nav-section">Entries</div>
+            {navTypes.map((t) => (
+              <Link
+                key={t.apiId}
+                href={`/entries/${t.apiId}`}
+                data-active={navActive(pathname, `/entries/${t.apiId}`)}
+              >
+                {t.name}
+              </Link>
+            ))}
+            {navTypes.length === 0 && (
+              <span className="nav-section" style={{ textTransform: "none" }}>
+                No types yet
+              </span>
+            )}
+          </nav>
+
+          <div className="sidebar-footer">
+            {websites.length > 1 && (
+              <>
+                <div className="nav-section">Switch website</div>
+                <select
+                  value={user?.websiteId ?? ""}
+                  disabled={switchingWebsite}
+                  onChange={(e) => onSwitchWebsite(e.target.value)}
+                >
+                  {websites.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            <div className="sidebar-account">
+              <div>{user?.email}</div>
+              {user?.siteKey && (
+                <div title="Public site key">siteKey: {user.siteKey}</div>
+              )}
+              {!isAdmin && showAi && (
+                <div>AI provider settings: admin only</div>
+              )}
+            </div>
+            <button className="btn btn-secondary" type="button" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
+        </aside>
+
+        <main className="main" key={contentKey}>
+          {children}
+        </main>
+      </div>
+
+      {showAi && (
+        <>
+          <button
+            type="button"
+            className={`ai-backdrop${!collapsed ? " is-open" : ""}`}
+            aria-label="Close AI assistant"
+            onClick={() => setCollapsed(true)}
+          />
+          <AiAssistantDock user={user} />
+        </>
+      )}
     </div>
   );
 }

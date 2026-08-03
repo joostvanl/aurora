@@ -183,31 +183,20 @@ export function AiAssistantDock({ user }: { user: AuthUser | null }) {
     .join(" · ");
 
   if (collapsed) {
-    return (
-      <aside className="ai-dock ai-dock--collapsed" aria-label="AI assistant">
-        <button
-          className="ai-dock-expand"
-          type="button"
-          onClick={() => setCollapsed(false)}
-          title="Open AI assistant"
-        >
-          AI
-        </button>
-      </aside>
-    );
+    return null;
   }
 
   return (
     <aside
       className={`ai-dock${resizing ? " ai-dock--resizing" : ""}`}
       aria-label="AI assistant"
-      style={{ width: dockWidth }}
+      style={{ ["--ai-dock" as string]: `${dockWidth}px` }}
     >
       <div
         className="ai-dock-resize"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize AI dock"
+        aria-label="Resize AI assistant"
         aria-valuenow={dockWidth}
         aria-valuemin={AI_DOCK_WIDTH_MIN}
         aria-valuemax={AI_DOCK_WIDTH_MAX}
@@ -241,7 +230,7 @@ export function AiAssistantDock({ user }: { user: AuthUser | null }) {
           type="button"
           onClick={() => setCollapsed(true)}
         >
-          Collapse
+          Close
         </button>
       </div>
 
@@ -259,7 +248,9 @@ export function AiAssistantDock({ user }: { user: AuthUser | null }) {
       <div className="ai-thread ai-dock-thread" ref={threadRef}>
         {history.length === 0 && (
           <div className="empty">
-            Ask to create a page or edit this screen — the assistant saves changes in the CMS with tools (not only as chat text). Changes stay within your role ({user?.role ?? "…"}).
+            Ask to create a page or edit this screen — the assistant saves
+            changes in the CMS with tools. Changes stay within your role (
+            {user?.role ?? "…"}).
           </div>
         )}
         {history.map((m, i) => (

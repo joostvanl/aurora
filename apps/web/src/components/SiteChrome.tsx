@@ -4,36 +4,19 @@ import {
   getNavItems,
   getSiteSettings,
 } from "@/lib/cms";
+import { SiteHeaderNav } from "@/components/SiteHeaderNav";
 
 export async function SiteHeader() {
   const [settings, nav] = await Promise.all([getSiteSettings(), getNavItems()]);
   const siteName = settings ? fieldString(settings, "siteName", "Aurora") : "Aurora";
 
-  return (
-    <header className="topbar">
-      <Link className="logo" href="/">
-        {siteName}
-      </Link>
-      <nav className="nav">
-        {nav.length > 0 ? (
-          nav.map((item) => (
-            <Link key={item.id} href={fieldString(item, "href", "/")}>
-              {fieldString(item, "label", item.slug)}
-            </Link>
-          ))
-        ) : (
-          <>
-            <Link href="/">Product</Link>
-            <Link href="/docs">Docs</Link>
-            <Link href="/services">Features</Link>
-            <Link href="/blog">Guides</Link>
-            <Link href="/blogs">Blogs</Link>
-            <Link href="/contact">Contact</Link>
-          </>
-        )}
-      </nav>
-    </header>
-  );
+  const items = nav.map((item) => ({
+    id: item.id,
+    href: fieldString(item, "href", "/"),
+    label: fieldString(item, "label", item.slug),
+  }));
+
+  return <SiteHeaderNav siteName={siteName} items={items} />;
 }
 
 export async function SiteFooter() {

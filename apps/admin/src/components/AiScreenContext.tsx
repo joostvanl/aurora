@@ -153,7 +153,7 @@ export function AiScreenProvider({
 }) {
   const pathname = usePathname() ?? "/";
   const [hints, setHintsState] = useState<AiScreenHints | null>(null);
-  const [collapsed, setCollapsedState] = useState(false);
+  const [collapsed, setCollapsedState] = useState(true);
   const [dockWidth, setDockWidthState] = useState(AI_DOCK_WIDTH_DEFAULT);
   const [dockCommand, setDockCommand] = useState<AiDockCommand | null>(null);
 

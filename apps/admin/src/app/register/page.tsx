@@ -5,9 +5,12 @@ export default function RegisterPage() {
   return (
     <div className="auth-shell">
       <div className="auth-card panel">
-        <div className="brand" style={{ color: "var(--ink)", marginBottom: "1rem" }}>
-          Aurora
-          <span style={{ color: "var(--muted)" }}>Create account</span>
+        <div className="brand-lockup">
+          <img src="/aurora-mark.png" alt="" width={36} height={36} />
+          <div>
+            <strong>Aurora</strong>
+            <span>Create account</span>
+          </div>
         </div>
         <p className="muted">
           A new login starts with an empty CMS. Import or create types as you go.

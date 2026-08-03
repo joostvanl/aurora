@@ -5,9 +5,12 @@ export default function LoginPage() {
   return (
     <div className="auth-shell">
       <div className="auth-card panel">
-        <div className="brand" style={{ color: "var(--ink)", marginBottom: "1rem" }}>
-          Aurora
-          <span style={{ color: "var(--muted)" }}>Sign in</span>
+        <div className="brand-lockup">
+          <img src="/aurora-mark.png" alt="" width={36} height={36} />
+          <div>
+            <strong>Aurora</strong>
+            <span>Sign in to Studio</span>
+          </div>
         </div>
         <p className="muted">
           Each account has its own content types, entries, and AI settings.
