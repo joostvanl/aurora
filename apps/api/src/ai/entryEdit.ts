@@ -113,7 +113,9 @@ async function requestPatchPlan(options: {
     currentFields[f.apiId] = options.entry.fields[f.apiId] ?? "";
   }
 
-  const system =
+  const custom = options.config.instructions?.trim() ?? "";
+
+  const baseSystem =
     options.mode === "optimize"
       ? `You optimize CMS entry field values.
 Return ONLY valid JSON (no markdown) with this shape:
@@ -145,6 +147,17 @@ Rules:
 - Keep brand voice clear and concrete; match the website context (site name, tagline, existing pages).
 - Richtext fields (type "richtext") MUST be HTML, never Markdown. Use <p>, <h2>, <ul>/<li>, <strong>, <em>, <a>, <code>. Never use # headings, **bold**, - lists, or fenced code in richtext values.
 - If nothing should change, return {"summary":"No changes","patches":[]}`;
+
+  const system =
+    baseSystem +
+    (custom
+      ? `
+
+Website-specific instructions (CRITICAL — highest priority for written field values):
+${custom}
+
+Apply these to every field value you write or patch. They override generic brand/tone matching above. For richtext, use HTML <strong>/<em> (not Markdown) when bold/italic is required.`
+      : "");
 
   const user = JSON.stringify(
     {

@@ -29,6 +29,7 @@ async function buildSystemPrompt(
   role: "editor" | "builder" | "admin",
   websiteId: string,
   context?: AiChatContext,
+  websiteInstructions?: string,
 ) {
   const lines: string[] = [
     `User role: ${role} (tools already enforce limits; do not claim you can do actions this role cannot).`,
@@ -49,6 +50,7 @@ async function buildSystemPrompt(
       : `\nCurrent studio context:\n- ${lines[0]}`;
 
   const knowledge = await buildWebsiteKnowledge(websiteId, context);
+  const custom = websiteInstructions?.trim() ?? "";
 
   return `You are Aurora CMS Assistant — an AI-first content operator for a headless CMS.
 
@@ -110,7 +112,17 @@ Reply formatting (critical):
    - Content type: [Name](/content-types/{apiId})
    - Form: [Name](/forms/{apiId})
 3. Prefer the human label (slug or title) as link text. Always include the real ids from tool results — never invent ids.
-${focus}`;
+${focus}${
+    custom
+      ? `
+
+Website-specific instructions (CRITICAL — highest priority for written content on THIS website):
+${custom}
+
+Apply these instructions to every piece of content you write or edit (titles, bodies, richtext, chat drafts that become entries). They override generic brand/tone/“match existing pages” style guidance above. They do NOT override safety, schema-approval, locale, or tool-permission rules.
+For richtext fields, express bold/italic/emphasis with HTML tags (<strong>, <em>, <u>, etc.), never Markdown.`
+      : ""
+  }`;
 }
 
 export async function runAiChat(input: {
@@ -157,6 +169,7 @@ export async function runAiChat(input: {
         input.role,
         input.websiteId,
         input.context,
+        config.instructions,
       ),
     },
     ...(input.history ?? [])

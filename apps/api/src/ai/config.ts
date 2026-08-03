@@ -7,10 +7,15 @@ const KEYS = {
   model: "ai.model",
   /** EUR charged / estimated per single token (e.g. 0.000012). */
   costPerTokenEur: "ai.costPerTokenEur",
+  /** Website-specific behavior instructions appended to every AI system prompt. */
+  instructions: "ai.instructions",
 } as const;
 
 /** Default when unset — ≈ €0.012 per 1k tokens. */
 export const DEFAULT_COST_PER_TOKEN_EUR = 0.000012;
+
+/** Soft cap for stored website AI instructions. */
+export const AI_INSTRUCTIONS_MAX_CHARS = 8_000;
 
 export type ResolvedAiConfig = {
   enabled: boolean;
@@ -21,6 +26,8 @@ export type ResolvedAiConfig = {
   apiKeyConfigured: boolean;
   apiKeyPreview: string | null;
   costPerTokenEur: number;
+  /** Custom instructions for this website (empty string when unset). */
+  instructions: string;
   /** Per-website settings — never shared via env. */
   source: "settings" | "none";
 };
@@ -53,15 +60,18 @@ async function getSetting(
 export async function resolveAiConfig(
   websiteId: string,
 ): Promise<ResolvedAiConfig> {
-  const [baseUrl, apiKey, model, costRaw] = await Promise.all([
+  const [baseUrl, apiKey, model, costRaw, instructionsRaw] = await Promise.all([
     getSetting(websiteId, KEYS.baseUrl),
     getSetting(websiteId, KEYS.apiKey),
     getSetting(websiteId, KEYS.model),
     getSetting(websiteId, KEYS.costPerTokenEur),
+    getSetting(websiteId, KEYS.instructions),
   ]);
 
   const configured = Boolean(baseUrl && apiKey && model);
-  const hasAny = Boolean(baseUrl || apiKey || model || costRaw);
+  const hasAny = Boolean(
+    baseUrl || apiKey || model || costRaw || instructionsRaw,
+  );
 
   return {
     enabled: configured,
@@ -72,6 +82,7 @@ export async function resolveAiConfig(
     apiKeyConfigured: Boolean(apiKey),
     apiKeyPreview: maskKey(apiKey),
     costPerTokenEur: parseCostPerToken(costRaw),
+    instructions: instructionsRaw ?? "",
     source: hasAny ? "settings" : "none",
   };
 }
@@ -96,6 +107,7 @@ export async function updateAiConfig(
     model?: string;
     clearApiKey?: boolean;
     costPerTokenEur?: number | null;
+    instructions?: string | null;
   },
 ) {
   if (input.baseUrl !== undefined) {
@@ -132,6 +144,26 @@ export async function updateAiConfig(
     }
   }
 
+  if (input.instructions !== undefined) {
+    if (input.instructions === null) {
+      await deleteSetting(websiteId, KEYS.instructions);
+    } else {
+      const value = input.instructions.trim();
+      if (!value) {
+        await deleteSetting(websiteId, KEYS.instructions);
+      } else if (value.length > AI_INSTRUCTIONS_MAX_CHARS) {
+        throw Object.assign(
+          new Error(
+            `instructions must be at most ${AI_INSTRUCTIONS_MAX_CHARS} characters`,
+          ),
+          { statusCode: 400 },
+        );
+      } else {
+        await upsertSetting(websiteId, KEYS.instructions, value);
+      }
+    }
+  }
+
   return resolveAiConfig(websiteId);
 }
 
@@ -151,6 +183,7 @@ export async function toPublicAiStatus(websiteId: string) {
     apiKeyPreview: config.apiKeyPreview,
     source: config.source,
     costPerTokenEur: config.costPerTokenEur,
+    instructions: config.instructions,
     usage: {
       periodFrom: usage.from,
       periodTo: usage.to,

@@ -12,6 +12,7 @@ export function AiStudio() {
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [costPerTokenEur, setCostPerTokenEur] = useState("0.000012");
+  const [instructions, setInstructions] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -24,6 +25,7 @@ export function AiStudio() {
     setCostPerTokenEur(
       s.costPerTokenEur != null ? String(s.costPerTokenEur) : "0.000012",
     );
+    setInstructions(s.instructions ?? "");
   }
 
   useEffect(() => {
@@ -46,11 +48,13 @@ export function AiStudio() {
         baseUrl,
         model,
         costPerTokenEur: cost,
+        instructions,
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       });
       setStatus(s);
       setApiKey("");
       setCostPerTokenEur(String(s.costPerTokenEur));
+      setInstructions(s.instructions ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save config");
     } finally {
@@ -211,6 +215,21 @@ export function AiStudio() {
                 {per1k != null
                   ? ` ≈ ${formatEur(per1k)} per 1.000 tokens.`
                   : null}
+              </p>
+            </div>
+            <div className="field">
+              <label htmlFor="aiInstructions">Website AI instructions</label>
+              <textarea
+                id="aiInstructions"
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                rows={8}
+                maxLength={8000}
+                placeholder="Tone, language, brand rules, what to avoid… Sent with every AI request for this website."
+              />
+              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                Appended to the system prompt on every chat and write/optimize
+                action. {instructions.length}/8000
               </p>
             </div>
             <div className="actions">

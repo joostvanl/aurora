@@ -88,6 +88,8 @@ export const AiStatusSchema = z.object({
   source: z.enum(["settings", "none"]),
   /** EUR estimated cost per token for this website. */
   costPerTokenEur: z.number().nonnegative(),
+  /** Website-specific AI behavior instructions (empty when unset). */
+  instructions: z.string().default(""),
   usage: z
     .object({
       periodFrom: z.string(),
@@ -111,6 +113,8 @@ export const AiConfigUpdateSchema = z.object({
   clearApiKey: z.boolean().optional(),
   /** EUR per token; null clears to default */
   costPerTokenEur: z.union([z.number().nonnegative(), z.null()]).optional(),
+  /** Website-specific AI instructions; empty/null clears */
+  instructions: z.union([z.string().max(8000), z.null()]).optional(),
 });
 
 export type AiConfigUpdate = z.input<typeof AiConfigUpdateSchema>;
