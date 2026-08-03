@@ -20,6 +20,11 @@ import {
   serializeFormSubmission,
 } from "../lib/forms.js";
 import { serializeContentType, serializeEntry } from "../lib/serialize.js";
+import {
+  assertLocaleOnWebsite,
+  getWebsiteLocales,
+} from "../lib/locales.js";
+import { createAllLocaleSiblings } from "../lib/translations.js";
 import { applyStrReplace } from "./patches.js";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
@@ -246,7 +251,8 @@ export const aiTools: ChatTool[] = [
     type: "function",
     function: {
       name: "list_entries",
-      description: "List entries for a content type (admin, includes drafts).",
+      description:
+        "List entries for a content type (admin, includes drafts). Defaults to the website defaultLocale unless locale is set (or allLocales=true).",
       parameters: {
         type: "object",
         properties: {
@@ -254,6 +260,15 @@ export const aiTools: ChatTool[] = [
           limit: { type: "number" },
           status: { type: "string", enum: ["draft", "published"] },
           slug: { type: "string" },
+          locale: {
+            type: "string",
+            description:
+              "Locale filter (language-REGION). Defaults to website defaultLocale.",
+          },
+          allLocales: {
+            type: "boolean",
+            description: "When true, return entries across all site locales.",
+          },
         },
         required: ["contentTypeApiId"],
         additionalProperties: false,
@@ -264,13 +279,19 @@ export const aiTools: ChatTool[] = [
     type: "function",
     function: {
       name: "get_entry",
-      description: "Get an entry by id or slug.",
+      description:
+        "Get an entry by id or slug. Slug lookup uses the website defaultLocale unless locale is set.",
       parameters: {
         type: "object",
         properties: {
           contentTypeApiId: { type: "string" },
           entryId: { type: "string" },
           slug: { type: "string" },
+          locale: {
+            type: "string",
+            description:
+              "Locale for slug lookup. Defaults to website defaultLocale.",
+          },
         },
         required: ["contentTypeApiId"],
         additionalProperties: false,
@@ -282,13 +303,18 @@ export const aiTools: ChatTool[] = [
     function: {
       name: "create_entry",
       description:
-        "Create a new CMS entry immediately (required when the user asks to create/write/make a page or post). Pass field values in `fields` in the same call — do not only draft text in chat. Prefer contentTypeApiId \"page\" for pages and \"post\" for blog posts. Richtext values must be HTML, never Markdown.",
+        "Create a new CMS entry immediately (required when the user asks to create/write/make a page or post). Pass field values in `fields` in the same call — do not only draft text in chat. Prefer contentTypeApiId \"page\" for pages and \"post\" for blog posts. Richtext values must be HTML, never Markdown. Omit locale to use the website defaultLocale — never invent unsupported locales like en-US.",
       parameters: {
         type: "object",
         properties: {
           contentTypeApiId: { type: "string" },
           slug: { type: "string" },
           status: { type: "string", enum: ["draft", "published"] },
+          locale: {
+            type: "string",
+            description:
+              "Optional. Must be one of the website locales. Defaults to website defaultLocale.",
+          },
           fields: { type: "object", additionalProperties: true },
         },
         required: ["contentTypeApiId", "slug"],
@@ -917,13 +943,25 @@ export async function executeAiTool(
         const contentTypeApiId = str(rawArgs, "contentTypeApiId");
         if (!contentTypeApiId) throw new Error("contentTypeApiId required");
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        const website = await getWebsiteLocales(websiteId);
         const limit = Math.min(num(rawArgs, "limit") ?? 20, 50);
         const status = str(rawArgs, "status") as EntryStatus | undefined;
         const slug = str(rawArgs, "slug");
+        const allLocales = bool(rawArgs, "allLocales") === true;
+        const localeArg = str(rawArgs, "locale");
+        let localeFilter: string | undefined;
+        if (!allLocales) {
+          localeFilter = localeArg ?? website.defaultLocale;
+          assertLocaleOnWebsite(localeFilter, website);
+        } else if (localeArg) {
+          assertLocaleOnWebsite(localeArg, website);
+          localeFilter = localeArg;
+        }
         const where = {
           contentTypeId: ct.id,
           ...(status ? { status } : {}),
           ...(slug ? { slug } : {}),
+          ...(localeFilter ? { locale: localeFilter } : {}),
         };
         const items = await prisma.entry.findMany({
           where,
@@ -934,7 +972,7 @@ export async function executeAiTool(
         return {
           name,
           ok: true,
-          summary: `Listed ${items.length} entries for ${contentTypeApiId}`,
+          summary: `Listed ${items.length} entries for ${contentTypeApiId}${localeFilter ? ` (${localeFilter})` : " (all locales)"}`,
           data: items.map(serializeEntry),
         };
       }
@@ -942,13 +980,19 @@ export async function executeAiTool(
         const contentTypeApiId = str(rawArgs, "contentTypeApiId");
         if (!contentTypeApiId) throw new Error("contentTypeApiId required");
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        const website = await getWebsiteLocales(websiteId);
         const entryId = str(rawArgs, "entryId");
         const slug = str(rawArgs, "slug");
+        const localeArg = str(rawArgs, "locale");
+        const locale =
+          entryId ? localeArg : (localeArg ?? website.defaultLocale);
+        if (locale) assertLocaleOnWebsite(locale, website);
         const entry = await prisma.entry.findFirst({
           where: {
             contentTypeId: ct.id,
             ...(entryId ? { id: entryId } : {}),
             ...(slug ? { slug } : {}),
+            ...(locale && !entryId ? { locale } : {}),
           },
           include: entryInclude,
         });
@@ -956,7 +1000,7 @@ export async function executeAiTool(
         return {
           name,
           ok: true,
-          summary: `Loaded entry ${entry.slug}`,
+          summary: `Loaded entry ${entry.slug} (${entry.locale})`,
           data: serializeEntry(entry),
         };
       }
@@ -967,18 +1011,49 @@ export async function executeAiTool(
           throw new Error("contentTypeApiId and slug required");
         }
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        const website = await getWebsiteLocales(websiteId);
+        const locale = str(rawArgs, "locale") ?? website.defaultLocale;
+        assertLocaleOnWebsite(locale, website);
         const status =
           (str(rawArgs, "status") as EntryStatus | undefined) ?? EntryStatus.draft;
         const fields = asRecord(asRecord(rawArgs).fields);
+
+        const existing = await prisma.entry.findUnique({
+          where: {
+            contentTypeId_slug_locale: {
+              contentTypeId: ct.id,
+              slug,
+              locale,
+            },
+          },
+        });
+        if (existing) {
+          throw new Error(
+            `Slug "${slug}" already exists for locale ${locale}`,
+          );
+        }
+
         const entry = await prisma.entry.create({
           data: {
             contentTypeId: ct.id,
             slug,
+            locale,
             status,
             publishedAt: status === EntryStatus.published ? new Date() : null,
           },
         });
-        await setEntryFields(entry.id, ct.id, fields);
+        await setEntryFields(entry.id, ct.id, fields, websiteId, locale);
+
+        if (ct.localizationMode === "all_locales") {
+          await createAllLocaleSiblings({
+            websiteId,
+            contentTypeId: ct.id,
+            sourceEntryId: entry.id,
+            sourceLocale: locale,
+            locales: website.locales,
+          });
+        }
+
         const full = await prisma.entry.findUniqueOrThrow({
           where: { id: entry.id },
           include: entryInclude,
@@ -991,7 +1066,7 @@ export async function executeAiTool(
         return {
           name,
           ok: true,
-          summary: `Created entry ${slug} (${status})`,
+          summary: `Created entry ${slug} (${status}, ${locale})`,
           data: serializeEntry(full),
         };
       }

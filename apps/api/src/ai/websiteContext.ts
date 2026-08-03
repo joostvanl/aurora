@@ -57,7 +57,13 @@ export async function buildWebsiteKnowledge(
 ): Promise<string> {
   const website = await prisma.website.findUnique({
     where: { id: websiteId },
-    select: { id: true, name: true, siteKey: true },
+    select: {
+      id: true,
+      name: true,
+      siteKey: true,
+      locales: true,
+      defaultLocale: true,
+    },
   });
   if (!website) return "Website knowledge: (website not found)";
 
@@ -87,7 +93,10 @@ export async function buildWebsiteKnowledge(
   sections.push(`## Website
 - name: ${website.name}
 - siteKey: ${website.siteKey}
-- websiteId: ${website.id}`);
+- websiteId: ${website.id}
+- defaultLocale: ${website.defaultLocale}
+- locales: ${website.locales.join(", ") || "(none)"}
+- locale rule: always create/edit in defaultLocale (${website.defaultLocale}) unless the user explicitly asks for another enabled locale from this list`);
 
   // Schema
   const schemaLines = types.map((ct) => {
@@ -151,7 +160,7 @@ export async function buildWebsiteKnowledge(
       for (const fv of e.fieldValues) fields[fv.field.apiId] = fv.value;
       const title = titleFromFields(fields);
       const label = title ? `"${title}"` : "";
-      return `- ${e.status} \`${e.slug}\` id=${e.id}${label ? ` ${label}` : ""}`;
+      return `- ${e.status} \`${e.slug}\` locale=${e.locale} id=${e.id}${label ? ` ${label}` : ""}`;
     });
     const more =
       ct.entries.length >= INDEX_PER_TYPE
@@ -187,6 +196,7 @@ export async function buildWebsiteKnowledge(
         `## Focused entry (current screen)
 - contentType: ${flat.contentType}
 - slug: ${flat.slug}
+- locale: ${flat.locale}
 - status: ${flat.status}
 - id: ${flat.id}
 \`\`\`json
@@ -223,7 +233,8 @@ ${JSON.stringify(compact, null, 2)}
 - Match the brand/voice from site settings and existing published pages — do not invent a different brand name or tone.
 - Reuse existing slugs/types when updating; check the entry index before creating duplicates.
 - Prefer the field apiIds from the schema above; call get_content_type only if something is missing.
-- When writing page/post copy, mirror length and HTML structure of similar existing entries.`);
+- When writing page/post copy, mirror length and HTML structure of similar existing entries.
+- Never create entries in a locale that is not listed under Website locales (especially do not default to en-US unless it is the site defaultLocale).`);
 
   let text = sections.join("\n\n");
   if (text.length > MAX_CHARS) {

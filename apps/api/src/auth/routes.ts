@@ -267,15 +267,21 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     );
   });
 
-  app.register(async (members) => {
-    members.addHook("preHandler", requireWebsite(RolePermission.admin));
+  // Active website details — readable by any member (editor+). Needed for
+  // locale filters on entry pages; PATCH stays admin-only below.
+  app.register(async (websiteRead) => {
+    websiteRead.addHook("preHandler", requireWebsite());
 
-    members.get("/api/v1/admin/website", async (request) => {
+    websiteRead.get("/api/v1/admin/website", async (request) => {
       const website = await prisma.website.findUniqueOrThrow({
         where: { id: websiteIdFrom(request) },
       });
       return serializeWebsite(website);
     });
+  });
+
+  app.register(async (members) => {
+    members.addHook("preHandler", requireWebsite(RolePermission.admin));
 
     members.patch("/api/v1/admin/website", async (request) => {
       const body = UpdateWebsiteSchema.parse(request.body);
