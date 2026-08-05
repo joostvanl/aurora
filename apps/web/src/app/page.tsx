@@ -1,13 +1,12 @@
 import Link from "next/link";
+import { HeroProductPreview } from "@/components/HeroProductPreview";
 import { RichTextBody } from "@/components/RichTextBody";
 import {
-  fieldMedia,
   fieldString,
   getEntry,
   getSiteSettings,
   listType,
   plainTextExcerpt,
-  plainTextWordTeaser,
 } from "@/lib/cms";
 
 export const dynamic = "force-dynamic";
@@ -19,26 +18,22 @@ export default async function HomePage() {
     servicesPage,
     workPage,
     blogPage,
-    blogsPage,
     testimonialsPage,
     services,
     projects,
     testimonials,
     posts,
-    blogs,
   ] = await Promise.all([
     getEntry("page", "home"),
     getSiteSettings(),
     getEntry("page", "services"),
     getEntry("page", "work"),
     getEntry("page", "blog"),
-    getEntry("page", "blogs"),
     getEntry("page", "testimonials"),
     listType("service"),
     listType("project"),
     listType("testimonial"),
     listType("post", 3),
-    listType("blog", 3),
   ]);
 
   const title = home
@@ -95,19 +90,44 @@ export default async function HomePage() {
       "Social proof managed as its own content type."
     : "Social proof managed as its own content type.";
 
+  const siteName = settings
+    ? fieldString(settings, "siteName", "Aurora")
+    : "Aurora";
+  const previewLines = [
+    ...services.slice(0, 3).map((s) => ({
+      label: s.slug,
+      value: fieldString(s, "title", s.slug),
+    })),
+    ...projects.slice(0, Math.max(0, 4 - Math.min(services.length, 3))).map((p) => ({
+      label: p.slug,
+      value: fieldString(p, "title", p.slug),
+    })),
+  ].slice(0, 4);
+
   return (
     <>
       <section className="hero">
-        <p className="eyebrow">{eyebrow}</p>
-        <h1>{title}</h1>
-        <p>{lead}</p>
-        <div className="cta-row">
-          <Link className="btn" href={ctaHref}>
-            {ctaLabel}
-          </Link>
-          <Link className="btn btn-ghost" href={secondaryCtaHref}>
-            {secondaryCtaLabel}
-          </Link>
+        <div className="hero-atmosphere" aria-hidden="true">
+          <div className="hero-grid" />
+          <div className="hero-orb hero-orb--a" />
+          <div className="hero-orb hero-orb--b" />
+        </div>
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <p className="hero-brand">{siteName}</p>
+            <p className="eyebrow">{eyebrow}</p>
+            <h1>{title}</h1>
+            <p className="hero-lead">{lead}</p>
+            <div className="cta-row">
+              <Link className="btn" href={ctaHref}>
+                {ctaLabel}
+              </Link>
+              <Link className="btn btn-ghost" href={secondaryCtaHref}>
+                {secondaryCtaLabel}
+              </Link>
+            </div>
+          </div>
+          <HeroProductPreview lines={previewLines} />
         </div>
       </section>
 
