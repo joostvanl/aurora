@@ -95,7 +95,7 @@ function parsePlan(raw: unknown): PatchPlan {
 
 async function requestPatchPlan(options: {
   config: ResolvedAiConfig;
-  mode: "write" | "optimize";
+  mode: "write" | "optimize" | "macro";
   instruction: string;
   contentTypeApiId: string;
   websiteId: string;
@@ -132,6 +132,22 @@ Rules:
 - Improve clarity/SEO/tone while preserving meaning.
 - Match the website brand/voice from the provided website context.
 - Richtext fields (type "richtext") MUST be HTML, never Markdown. Use <p>, <h2>, <ul>/<li>, <strong>, <em>, <a>, <code>. Never use # headings, **bold**, - lists, or fenced code in richtext values. Preserve existing HTML structure when patching.
+- If nothing should change, return {"summary":"No changes","patches":[]}`
+      : options.mode === "macro"
+        ? `You edit CMS entry field values according to the user's instruction (a custom website macro).
+Return ONLY valid JSON (no markdown) with this shape:
+{"summary":"short note","patches":[...]}
+
+Patch ops:
+- {"fieldApiId":"...","op":"str_replace","old_string":"...","new_string":"...","replace_all":false}
+- {"fieldApiId":"...","op":"write","value":"..."}
+
+Rules:
+- Follow the instruction carefully; it is the primary goal for this edit.
+- Prefer str_replace for small edits; use write for empty fields or full rewrites when needed.
+- Do not invent fields. Only use provided fieldApiIds.
+- Match the website brand/voice from the provided website context unless the instruction overrides it.
+- Richtext fields (type "richtext") MUST be HTML, never Markdown. Use <p>, <h2>, <ul>/<li>, <strong>, <em>, <a>, <code>. Never use # headings, **bold**, - lists, or fenced code in richtext values.
 - If nothing should change, return {"summary":"No changes","patches":[]}`
       : `You write CMS entry field values.
 Return ONLY valid JSON (no markdown) with this shape:
@@ -182,7 +198,12 @@ Apply these to every field value you write or patch. They override generic brand
     responseFormatJson: true,
     meter: {
       websiteId: options.websiteId,
-      source: options.mode === "optimize" ? "entry_optimize" : "entry_write",
+      source:
+        options.mode === "optimize"
+          ? "entry_optimize"
+          : options.mode === "macro"
+            ? "entry_macro"
+            : "entry_write",
     },
   });
 
@@ -195,7 +216,7 @@ export async function runEntryContentEdit(input: {
   message: string;
   contentTypeApiId: string;
   entryId: string;
-  mode: "write" | "optimize";
+  mode: "write" | "optimize" | "macro";
   websiteId: string;
 }): Promise<AiChatResponse> {
   const config = await resolveAiConfig(input.websiteId);
@@ -269,7 +290,12 @@ export async function runEntryContentEdit(input: {
 
   const version = await createEntryVersion({
     entryId: entry.id,
-    label: input.mode === "optimize" ? "Before AI optimize" : "Before AI write",
+    label:
+      input.mode === "optimize"
+        ? "Before AI optimize"
+        : input.mode === "macro"
+          ? "Before AI macro"
+          : "Before AI write",
     source: "ai",
   });
   versionCreated = {

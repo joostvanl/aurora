@@ -57,6 +57,80 @@ function parseUsage(parsed: unknown): TokenUsage {
   };
 }
 
+function providerErrorMessage(parsed: unknown, status: number): string {
+  return typeof parsed === "object" &&
+    parsed !== null &&
+    "error" in parsed &&
+    typeof (parsed as { error?: { message?: string } }).error?.message ===
+      "string"
+    ? (parsed as { error: { message: string } }).error.message
+    : `AI provider error (${status})`;
+}
+
+/** List models from an OpenAI-compatible `GET /models` endpoint. */
+export async function listProviderModels(options: {
+  baseUrl: string;
+  apiKey: string;
+}): Promise<Array<{ id: string }>> {
+  const base = options.baseUrl.trim().replace(/\/$/, "");
+  const apiKey = options.apiKey.trim();
+  if (!base || !apiKey) {
+    throw Object.assign(
+      new Error("Base URL and API key are required to list models"),
+      { statusCode: 400 },
+    );
+  }
+
+  const res = await fetch(`${base}/models`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : undefined;
+  } catch {
+    parsed = text;
+  }
+
+  if (!res.ok) {
+    throw Object.assign(new Error(providerErrorMessage(parsed, res.status)), {
+      statusCode: 502,
+    });
+  }
+
+  const data =
+    parsed &&
+    typeof parsed === "object" &&
+    "data" in parsed &&
+    Array.isArray((parsed as { data: unknown }).data)
+      ? (parsed as { data: unknown[] }).data
+      : Array.isArray(parsed)
+        ? parsed
+        : null;
+
+  if (!data) {
+    throw Object.assign(
+      new Error("AI provider returned an unexpected models response"),
+      { statusCode: 502 },
+    );
+  }
+
+  const ids = new Set<string>();
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const id = (item as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) ids.add(id.trim());
+  }
+
+  return [...ids]
+    .sort((a, b) => a.localeCompare(b))
+    .map((id) => ({ id }));
+}
+
 export async function chatCompletion(options: {
   config: ResolvedAiConfig;
   messages: ChatMessage[];
@@ -117,15 +191,10 @@ export async function chatCompletion(options: {
       });
     }
 
-    const message =
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "error" in parsed &&
-      typeof (parsed as { error?: { message?: string } }).error?.message ===
-        "string"
-        ? (parsed as { error: { message: string } }).error.message
-        : `AI provider error (${res.status})`;
-    throw Object.assign(new Error(message), { statusCode: 502 });
+    throw Object.assign(
+      new Error(providerErrorMessage(parsed, res.status)),
+      { statusCode: 502 },
+    );
   }
 
   const choice = (

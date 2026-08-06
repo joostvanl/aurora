@@ -41,7 +41,7 @@ export function SettingsHub() {
       href: "/ai",
       title: "AI settings",
       description:
-        "Provider config, cost per token, and recorded AI usage for this website.",
+        "Provider, website instructions, custom macros, and AI usage for this website.",
       visible: showAi,
     },
     {

@@ -225,13 +225,35 @@ export function AiAssistantDock({ user }: { user: AuthUser | null }) {
             {contextLabel || "Studio"}
           </div>
         </div>
-        <button
-          className="btn btn-secondary"
-          type="button"
-          onClick={() => setCollapsed(true)}
-        >
-          Close
-        </button>
+        <div className="ai-dock-header-actions">
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={
+              pending ||
+              (history.length === 0 &&
+                toolLog.length === 0 &&
+                !error &&
+                !message.trim())
+            }
+            onClick={() => {
+              clearDockCommand();
+              setHistory([]);
+              setToolLog([]);
+              setError(null);
+              setMessage("");
+            }}
+          >
+            Clear
+          </button>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => setCollapsed(true)}
+          >
+            Close
+          </button>
+        </div>
       </div>
 
       {status && !status.enabled && (
@@ -329,6 +351,18 @@ export function AiAssistantDock({ user }: { user: AuthUser | null }) {
           >
             Optimize
           </button>
+          {(status?.macros ?? []).map((macro) => (
+            <button
+              key={macro.id}
+              className="btn btn-secondary"
+              type="button"
+              disabled={!status?.enabled || pending}
+              title={macro.prompt}
+              onClick={() => void sendMessage(macro.prompt, "macro")}
+            >
+              {macro.name}
+            </button>
+          ))}
         </div>
       )}
 

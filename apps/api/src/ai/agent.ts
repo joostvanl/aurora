@@ -133,11 +133,13 @@ export async function runAiChat(input: {
   history?: AiChatMessage[];
   context?: AiChatContext;
 }): Promise<AiChatResponse> {
-  // Entry write/optimize: deterministic JSON-patch path (works without tool-calling support).
+  // Entry write/optimize/macro: deterministic JSON-patch path (works without tool-calling support).
   if (
     input.context?.entryId &&
     input.context.contentTypeApiId &&
-    (input.context.mode === "write" || input.context.mode === "optimize")
+    (input.context.mode === "write" ||
+      input.context.mode === "optimize" ||
+      input.context.mode === "macro")
   ) {
     return runEntryContentEdit({
       message: input.message,

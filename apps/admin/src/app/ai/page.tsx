@@ -7,8 +7,9 @@ export default function AiPage() {
         <div>
           <h1>AI settings</h1>
           <p>
-            Configure the OpenAI-compatible provider for this website. Use the
-            assistant dock on any page to chat and make CMS changes.
+            Configure the OpenAI-compatible provider, website AI instructions,
+            and custom dock macros for this website. Use the assistant dock on
+            any page to chat and make CMS changes.
           </p>
         </div>
       </div>

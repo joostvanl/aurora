@@ -23,6 +23,8 @@ import type {
   AiChatRequest,
   AiChatResponse,
   AiConfigUpdate,
+  AiListModelsRequest,
+  AiListModelsResponse,
   AiStatus,
   EntryVersion,
 } from "./ai.js";
@@ -578,6 +580,14 @@ export class CmsClient {
     return this.request<AiStatus>(
       "/api/v1/admin/ai/config",
       { method: "PUT", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  listAiModels(input: AiListModelsRequest = {}) {
+    return this.request<AiListModelsResponse>(
+      "/api/v1/admin/ai/models",
+      { method: "POST", body: JSON.stringify(input) },
       { auth: true },
     );
   }

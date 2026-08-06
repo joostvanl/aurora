@@ -1,3 +1,5 @@
+import type { AiConfigUpdate, AiMacro } from "@cms/shared";
+import { AI_MACROS_MAX, AiMacroSchema } from "@cms/shared";
 import { prisma } from "../db.js";
 import { sumAiUsageForWebsite } from "./usage.js";
 
@@ -9,6 +11,8 @@ const KEYS = {
   costPerTokenEur: "ai.costPerTokenEur",
   /** Website-specific behavior instructions appended to every AI system prompt. */
   instructions: "ai.instructions",
+  /** JSON array of custom AI dock macros. */
+  macros: "ai.macros",
 } as const;
 
 /** Default when unset — ≈ €0.012 per 1k tokens. */
@@ -28,6 +32,7 @@ export type ResolvedAiConfig = {
   costPerTokenEur: number;
   /** Custom instructions for this website (empty string when unset). */
   instructions: string;
+  macros: AiMacro[];
   /** Per-website settings — never shared via env. */
   source: "settings" | "none";
 };
@@ -45,6 +50,33 @@ function parseCostPerToken(raw: string | null): number {
   return n;
 }
 
+function parseMacros(raw: string | null): AiMacro[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const result = AiMacroSchema.array().max(AI_MACROS_MAX).safeParse(parsed);
+    return result.success ? result.data : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeMacros(input: AiMacro[]): AiMacro[] {
+  const seen = new Set<string>();
+  const out: AiMacro[] = [];
+  for (const m of input) {
+    const id = m.id.trim();
+    const name = m.name.trim();
+    const prompt = m.prompt.trim();
+    if (!id || !name || !prompt) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name, prompt });
+    if (out.length >= AI_MACROS_MAX) break;
+  }
+  return out;
+}
+
 async function getSetting(
   websiteId: string,
   key: string,
@@ -60,17 +92,19 @@ async function getSetting(
 export async function resolveAiConfig(
   websiteId: string,
 ): Promise<ResolvedAiConfig> {
-  const [baseUrl, apiKey, model, costRaw, instructionsRaw] = await Promise.all([
-    getSetting(websiteId, KEYS.baseUrl),
-    getSetting(websiteId, KEYS.apiKey),
-    getSetting(websiteId, KEYS.model),
-    getSetting(websiteId, KEYS.costPerTokenEur),
-    getSetting(websiteId, KEYS.instructions),
-  ]);
+  const [baseUrl, apiKey, model, costRaw, instructionsRaw, macrosRaw] =
+    await Promise.all([
+      getSetting(websiteId, KEYS.baseUrl),
+      getSetting(websiteId, KEYS.apiKey),
+      getSetting(websiteId, KEYS.model),
+      getSetting(websiteId, KEYS.costPerTokenEur),
+      getSetting(websiteId, KEYS.instructions),
+      getSetting(websiteId, KEYS.macros),
+    ]);
 
   const configured = Boolean(baseUrl && apiKey && model);
   const hasAny = Boolean(
-    baseUrl || apiKey || model || costRaw || instructionsRaw,
+    baseUrl || apiKey || model || costRaw || instructionsRaw || macrosRaw,
   );
 
   return {
@@ -83,6 +117,7 @@ export async function resolveAiConfig(
     apiKeyPreview: maskKey(apiKey),
     costPerTokenEur: parseCostPerToken(costRaw),
     instructions: instructionsRaw ?? "",
+    macros: parseMacros(macrosRaw),
     source: hasAny ? "settings" : "none",
   };
 }
@@ -101,14 +136,7 @@ async function deleteSetting(websiteId: string, key: string) {
 
 export async function updateAiConfig(
   websiteId: string,
-  input: {
-    baseUrl?: string;
-    apiKey?: string;
-    model?: string;
-    clearApiKey?: boolean;
-    costPerTokenEur?: number | null;
-    instructions?: string | null;
-  },
+  input: AiConfigUpdate,
 ) {
   if (input.baseUrl !== undefined) {
     const value = input.baseUrl.trim();
@@ -164,6 +192,15 @@ export async function updateAiConfig(
     }
   }
 
+  if (input.macros !== undefined) {
+    const macros = normalizeMacros(input.macros);
+    if (macros.length === 0) {
+      await deleteSetting(websiteId, KEYS.macros);
+    } else {
+      await upsertSetting(websiteId, KEYS.macros, JSON.stringify(macros));
+    }
+  }
+
   return resolveAiConfig(websiteId);
 }
 
@@ -184,6 +221,7 @@ export async function toPublicAiStatus(websiteId: string) {
     source: config.source,
     costPerTokenEur: config.costPerTokenEur,
     instructions: config.instructions,
+    macros: config.macros,
     usage: {
       periodFrom: usage.from,
       periodTo: usage.to,

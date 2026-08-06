@@ -1,5 +1,8 @@
 "use client";
 
+import type { AiMacro } from "@cms/shared";
+import { useEffect, useState } from "react";
+import { getBrowserAdminClient } from "@/lib/auth";
 import { useAiScreen } from "@/components/AiScreenContext";
 
 /** Entry-page shortcuts that drive the global AI dock (no separate chat panel). */
@@ -11,6 +14,14 @@ export function EntryAiShortcuts({
   hasContent: boolean;
 }) {
   const { runDockPrompt, expandDock } = useAiScreen();
+  const [macros, setMacros] = useState<AiMacro[]>([]);
+
+  useEffect(() => {
+    getBrowserAdminClient()
+      .getAiStatus()
+      .then((s) => setMacros(s.macros ?? []))
+      .catch(() => setMacros([]));
+  }, []);
 
   if (!entryId) {
     return (
@@ -51,6 +62,23 @@ export function EntryAiShortcuts({
       >
         Optimize with AI
       </button>
+      {macros.map((macro) => (
+        <button
+          key={macro.id}
+          className="btn btn-secondary"
+          type="button"
+          title={macro.prompt}
+          onClick={() => {
+            expandDock();
+            runDockPrompt({
+              mode: "macro",
+              message: macro.prompt,
+            });
+          }}
+        >
+          {macro.name}
+        </button>
+      ))}
     </div>
   );
 }
