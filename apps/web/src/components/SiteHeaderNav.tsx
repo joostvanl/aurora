@@ -41,12 +41,13 @@ export function SiteHeaderNav({
     items.length > 0
       ? items
       : [
-          { id: "home", href: "/", label: "Product" },
           { id: "docs", href: "/docs", label: "Docs" },
           { id: "services", href: "/services", label: "Features" },
           { id: "blog", href: "/blog", label: "Guides" },
           { id: "blogs", href: "/blogs", label: "Blogs" },
-          { id: "contact", href: "/contact", label: "Contact" },
+          { id: "pricing", href: "/pricing", label: "Pricing" },
+          { id: "faq", href: "/faq", label: "FAQ" },
+          { id: "about", href: "/about", label: "About" },
         ];
 
   return (

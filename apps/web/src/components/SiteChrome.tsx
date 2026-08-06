@@ -3,24 +3,42 @@ import {
   fieldString,
   getNavItems,
   getSiteSettings,
+  listType,
 } from "@/lib/cms";
 import { SiteHeaderNav } from "@/components/SiteHeaderNav";
 
-export async function SiteHeader() {
-  const [settings, nav] = await Promise.all([getSiteSettings(), getNavItems()]);
-  const siteName = settings ? fieldString(settings, "siteName", "Aurora") : "Aurora";
+const USE_CASES_HREF = "/work";
 
-  const items = nav.map((item) => ({
-    id: item.id,
-    href: fieldString(item, "href", "/"),
-    label: fieldString(item, "label", item.slug),
-  }));
+export async function SiteHeader() {
+  const [settings, nav, projects] = await Promise.all([
+    getSiteSettings(),
+    getNavItems(),
+    listType("project", 1),
+  ]);
+  const siteName = settings ? fieldString(settings, "siteName", "Aurora") : "Aurora";
+  const hasUseCases = projects.length > 0;
+
+  const items = nav
+    .map((item) => ({
+      id: item.id,
+      href: fieldString(item, "href", "/"),
+      label: fieldString(item, "label", item.slug),
+    }))
+    .filter((item) => {
+      if (item.href === "/" || item.href === "/contact") return false;
+      if (item.href === USE_CASES_HREF && !hasUseCases) return false;
+      return true;
+    });
 
   return <SiteHeaderNav siteName={siteName} items={items} />;
 }
 
 export async function SiteFooter() {
-  const [settings, nav] = await Promise.all([getSiteSettings(), getNavItems()]);
+  const [settings, nav, projects] = await Promise.all([
+    getSiteSettings(),
+    getNavItems(),
+    listType("project", 1),
+  ]);
   const siteName = settings ? fieldString(settings, "siteName", "Aurora") : "Aurora";
   const footerText = settings
     ? fieldString(settings, "footerText")
@@ -28,10 +46,13 @@ export async function SiteFooter() {
   const email = settings ? fieldString(settings, "contactEmail") : "";
   const linkedin = settings ? fieldString(settings, "socialLinkedin") : "";
   const github = settings ? fieldString(settings, "socialGithub") : "";
+  const hasUseCases = projects.length > 0;
 
   const explore = nav.filter((item) => {
     const href = fieldString(item, "href", "/");
-    return href !== "/";
+    if (href === "/" || href === "/contact") return false;
+    if (href === USE_CASES_HREF && !hasUseCases) return false;
+    return true;
   });
 
   return (

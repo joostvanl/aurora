@@ -643,7 +643,6 @@ async function main() {
   });
 
   const nav = [
-    { slug: "home", label: "Product", href: "/", sortOrder: 0 },
     { slug: "docs", label: "Docs", href: "/docs", sortOrder: 1 },
     { slug: "features", label: "Features", href: "/services", sortOrder: 2 },
     { slug: "use-cases", label: "Use cases", href: "/work", sortOrder: 3 },
@@ -652,7 +651,6 @@ async function main() {
     { slug: "pricing", label: "Pricing", href: "/pricing", sortOrder: 6 },
     { slug: "faq", label: "FAQ", href: "/faq", sortOrder: 7 },
     { slug: "about", label: "About", href: "/about", sortOrder: 8 },
-    { slug: "contact", label: "Contact", href: "/contact", sortOrder: 9 },
   ];
   for (const item of nav) {
     await upsertEntry(uid, "nav_item", item.slug, item);
