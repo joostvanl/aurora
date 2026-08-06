@@ -181,8 +181,14 @@ Field `type`: `text` \| `textarea` \| `richtext` \| `boolean` \| `datetime` \| `
 | Method | Path | Body |
 |--------|------|------|
 | POST | `/api/v1/admin/media` | `multipart/form-data` with field `file` (jpeg/png/webp/gif, max 5MB) |
+| GET | `/api/v1/admin/media/status` | — (active provider; ImageKit secrets masked) |
+| GET | `/api/v1/admin/media/library` | ImageKit library (`skip`, `limit`, `q`) — requires ImageKit credentials |
+| PUT | `/api/v1/admin/media/config` | Admin: `{ provider?, publicKey?, privateKey?, clearPrivateKey?, urlEndpoint?, folder? }` |
 
-Response: `{ url, filename, mimeType, size }`. Store `url` in a `media` entry field. Files are public at `GET /uploads/{websiteId}/{filename}`.
+Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `url` in a `media` entry field.
+
+- **local** (default): files at `GET /uploads/{websiteId}/{filename}`
+- **imagekit**: when configured in Studio → Settings → Media storage, uploads go to ImageKit CDN (folder `/{optionalFolder}/{websiteId}/`) and `url` is the ImageKit delivery URL
 
 ### Entries
 

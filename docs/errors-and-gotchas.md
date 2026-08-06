@@ -21,7 +21,7 @@
 5. **Register = empty CMS** — not the seeded demo.
 6. **Site key ≠ JWT** — never swap them.
 7. **AI config is per website** (admin only); chat runs in the studio dock within the user’s role.
-8. **`media` fields** store a public image URL (upload via `POST /api/v1/admin/media` or paste). Files live under `/uploads/{websiteId}/`.
+8. **`media` fields** store a public image URL (upload via `POST /api/v1/admin/media` or paste). Default storage is local disk under `/uploads/{websiteId}/`. Per website you can switch to ImageKit (Settings → Media storage); then uploads return an ImageKit CDN URL instead.
 
 ## Health check first
 

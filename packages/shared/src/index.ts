@@ -4,4 +4,5 @@ export * from "./client.js";
 export * from "./ai.js";
 export * from "./analytics.js";
 export * from "./auth.js";
+export * from "./media.js";
 

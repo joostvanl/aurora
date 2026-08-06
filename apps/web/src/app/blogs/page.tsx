@@ -55,7 +55,12 @@ export default async function BlogsIndexPage() {
               {image ? (
                 <div className="blog-card-thumb">
                   {/* eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs */}
-                  <img src={image.url} alt={imageAlt} loading="lazy" />
+                  <img
+                    src={image.url}
+                    alt={imageAlt}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
               ) : (
                 <div className="blog-card-thumb blog-card-thumb--empty" aria-hidden />

@@ -28,6 +28,12 @@ import type {
 } from "./ai.js";
 import type { ContentRequestUsage } from "./analytics.js";
 import type {
+  MediaConfigUpdate,
+  MediaLibraryResponse,
+  MediaStatus,
+  MediaUploadResult,
+} from "./media.js";
+import type {
   AuthResponse,
   AuthUser,
   LoginInput,
@@ -576,6 +582,35 @@ export class CmsClient {
     );
   }
 
+  getMediaStatus() {
+    return this.request<MediaStatus>(
+      "/api/v1/admin/media/status",
+      {},
+      { auth: true },
+    );
+  }
+
+  updateMediaConfig(input: MediaConfigUpdate) {
+    return this.request<MediaStatus>(
+      "/api/v1/admin/media/config",
+      { method: "PUT", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  listMediaLibrary(params?: { skip?: number; limit?: number; q?: string }) {
+    const search = new URLSearchParams();
+    if (params?.skip != null) search.set("skip", String(params.skip));
+    if (params?.limit != null) search.set("limit", String(params.limit));
+    if (params?.q?.trim()) search.set("q", params.q.trim());
+    const qs = search.toString();
+    return this.request<MediaLibraryResponse>(
+      `/api/v1/admin/media/library${qs ? `?${qs}` : ""}`,
+      {},
+      { auth: true },
+    );
+  }
+
   aiChat(input: AiChatRequest) {
     return this.request<AiChatResponse>(
       "/api/v1/admin/ai/chat",
@@ -728,12 +763,7 @@ export class CmsClient {
           : res.statusText || "Request failed";
       throw new CmsApiError(message, res.status, body);
     }
-    return body as {
-      url: string;
-      filename: string;
-      mimeType: string;
-      size: number;
-    };
+    return body as MediaUploadResult;
   }
 
   /**

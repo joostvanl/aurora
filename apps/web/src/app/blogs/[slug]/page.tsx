@@ -41,7 +41,12 @@ export default async function BlogArticlePage({ params }: Props) {
       {image && (
         <div className="blog-hero-image">
           {/* eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs */}
-          <img src={image.url} alt={imageAlt} loading="eager" />
+          <img
+            src={image.url}
+            alt={imageAlt}
+            loading="eager"
+            referrerPolicy="no-referrer"
+          />
         </div>
       )}
       <h1>{title}</h1>

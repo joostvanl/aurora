@@ -45,6 +45,13 @@ export function SettingsHub() {
       visible: showAi,
     },
     {
+      href: "/media",
+      title: "Media storage",
+      description:
+        "Local disk or ImageKit CDN for media field uploads on this website.",
+      visible: showAi,
+    },
+    {
       href: "/select-website",
       title: "Websites",
       description: "Switch between websites you belong to, or create a new one.",

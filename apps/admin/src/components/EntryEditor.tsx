@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContentType, FieldDefinition, FlatEntry, WebsiteDetails } from "@cms/shared";
+import type { ContentType, FieldDefinition, FlatEntry, MediaLibraryItem, WebsiteDetails } from "@cms/shared";
 import { flagEmoji } from "@cms/shared";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -12,8 +12,8 @@ import {
   useAiScreen,
 } from "@/components/AiScreenContext";
 import { EntryVersions } from "@/components/EntryVersions";
+import { MediaLibraryOverlay } from "@/components/MediaLibraryOverlay";
 import { RichTextEditor } from "@/components/RichTextEditor";
-
 function fieldDefault(type: FieldDefinition["type"]): unknown {
   switch (type) {
     case "boolean":
@@ -759,8 +759,22 @@ function MediaFieldInput({
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [imagekitReady, setImagekitReady] = useState(false);
   const url = mediaUrl(value);
   const alt = mediaAlt(value);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [url]);
+
+  useEffect(() => {
+    getBrowserAdminClient()
+      .getMediaStatus()
+      .then((s) => setImagekitReady(s.imagekitConfigured))
+      .catch(() => setImagekitReady(false));
+  }, []);
 
   function emit(nextUrl: string, nextAlt: string, extra?: Record<string, unknown>) {
     if (!nextUrl.trim()) {
@@ -774,6 +788,15 @@ function MediaFieldInput({
       height: null,
       mimeType: extra?.mimeType ?? null,
       ...extra,
+    });
+  }
+
+  function selectFromLibrary(item: MediaLibraryItem) {
+    emit(item.url, alt || item.name, {
+      mimeType: item.mimeType,
+      width: item.width,
+      height: item.height,
+      fileId: item.fileId,
     });
   }
 
@@ -797,8 +820,34 @@ function MediaFieldInput({
     <div className="media-field">
       {url ? (
         <div className="media-field-preview">
-          <img src={url} alt={alt} />
+          {!previewFailed ? (
+            // referrerPolicy: ImageKit (and similar CDNs) may 403 when Referer is localhost
+            // or an origin not on their allowlist — omit the referrer for previews.
+            <img
+              src={url}
+              alt={alt || "Uploaded image"}
+              referrerPolicy="no-referrer"
+              onError={() => setPreviewFailed(true)}
+            />
+          ) : (
+            <div className="media-field-preview-fallback">
+              <p className="muted" style={{ margin: 0 }}>
+                Preview blocked by the CDN (image is still saved).
+              </p>
+              <a href={url} target="_blank" rel="noreferrer">
+                Open image
+              </a>
+            </div>
+          )}
         </div>
+      ) : null}
+      {url ? (
+        <p className="muted media-field-status" style={{ margin: 0 }}>
+          Image attached ·{" "}
+          <a href={url} target="_blank" rel="noreferrer">
+            open
+          </a>
+        </p>
       ) : null}
       <input
         id={id}
@@ -826,6 +875,16 @@ function MediaFieldInput({
         disabled={uploading || !url}
       />
       <div className="media-field-actions">
+        {imagekitReady ? (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={uploading}
+            onClick={() => setLibraryOpen(true)}
+          >
+            Browse library
+          </button>
+        ) : null}
         {url ? (
           <button
             type="button"
@@ -841,6 +900,11 @@ function MediaFieldInput({
       {uploadError ? (
         <p style={{ color: "var(--danger)", margin: 0 }}>{uploadError}</p>
       ) : null}
+      <MediaLibraryOverlay
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onSelect={selectFromLibrary}
+      />
     </div>
   );
 }

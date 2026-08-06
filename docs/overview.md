@@ -14,7 +14,7 @@ Aurora is a **headless CMS**:
 - Not a file-based CMS (content lives in PostgreSQL)
 - Multi-website tenancy with membership roles (`editor` / `builder` / `admin`)
 - Public reads via website `siteKey`; studio writes via JWT or API token
-- Not a media CDN (local disk uploads under `/uploads`; no transforms/S3 yet)
+- Not a full DAM: uploads default to local disk under `/uploads`; optional per-website ImageKit CDN via Settings → Media storage
 
 ## Core concepts (one paragraph)
 

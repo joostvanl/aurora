@@ -5,11 +5,14 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { MediaConfigUpdateSchema } from "@cms/shared";
 import {
   requireWebsite,
   websiteIdFrom,
 } from "../auth/middleware.js";
 import { RolePermission } from "../auth/roles.js";
+import { resolveMediaConfig, toPublicMediaStatus, updateMediaConfig } from "./config.js";
+import { listImageKitFiles, uploadToImageKit } from "./imagekit.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -48,6 +51,53 @@ export async function registerMediaRoutes(app: FastifyInstance) {
   app.register(async (admin) => {
     admin.addHook("preHandler", requireWebsite(RolePermission.content));
 
+    admin.get("/api/v1/admin/media/status", async (request) => {
+      return toPublicMediaStatus(websiteIdFrom(request));
+    });
+
+    admin.put(
+      "/api/v1/admin/media/config",
+      { preHandler: requireWebsite(RolePermission.admin) },
+      async (request) => {
+        const body = MediaConfigUpdateSchema.parse(request.body);
+        return updateMediaConfig(websiteIdFrom(request), body);
+      },
+    );
+
+    admin.get("/api/v1/admin/media/library", async (request) => {
+      const websiteId = websiteIdFrom(request);
+      const config = await resolveMediaConfig(websiteId);
+
+      if (!config.imagekitConfigured) {
+        throw httpError(
+          400,
+          "ImageKit is not configured for this website. Set it under Settings → Media storage.",
+        );
+      }
+
+      const query = request.query as {
+        skip?: string;
+        limit?: string;
+        q?: string;
+      };
+      const skip = Number(query.skip ?? 0);
+      const limit = Number(query.limit ?? 48);
+      const listed = await listImageKitFiles({
+        config,
+        skip: Number.isFinite(skip) ? skip : 0,
+        limit: Number.isFinite(limit) ? limit : 48,
+        search: typeof query.q === "string" ? query.q : undefined,
+      });
+
+      return {
+        provider: "imagekit" as const,
+        items: listed.items,
+        skip: listed.skip,
+        limit: listed.limit,
+        hasMore: listed.items.length >= listed.limit,
+      };
+    });
+
     admin.post("/api/v1/admin/media", async (request) => {
       const websiteId = websiteIdFrom(request);
       const file = await request.file({
@@ -55,7 +105,7 @@ export async function registerMediaRoutes(app: FastifyInstance) {
       });
 
       if (!file) {
-        throw httpError(400, "Expected multipart field \"file\"");
+        throw httpError(400, 'Expected multipart field "file"');
       }
 
       const ext = ALLOWED_MIME[file.mimetype];
@@ -67,6 +117,41 @@ export async function registerMediaRoutes(app: FastifyInstance) {
       }
 
       const filename = `${randomUUID()}${ext}`;
+      const config = await resolveMediaConfig(websiteId);
+
+      if (config.provider === "imagekit") {
+        let buffer: Buffer;
+        try {
+          buffer = await file.toBuffer();
+        } catch (err) {
+          const e = err as Error & { code?: string };
+          if (e.code === "FST_REQ_FILE_TOO_LARGE") {
+            throw httpError(400, "File exceeds maximum size of 5MB");
+          }
+          throw err;
+        }
+        if (file.file.truncated || buffer.length > MAX_BYTES) {
+          throw httpError(400, "File exceeds maximum size of 5MB");
+        }
+
+        const uploaded = await uploadToImageKit({
+          config,
+          buffer,
+          filename,
+          mimeType: file.mimetype,
+          websiteFolder: websiteId,
+        });
+
+        return {
+          url: uploaded.url,
+          filename: uploaded.name || filename,
+          mimeType: file.mimetype,
+          size: uploaded.size,
+          provider: "imagekit" as const,
+          fileId: uploaded.fileId,
+        };
+      }
+
       const dir = path.join(uploadsRootDir(), websiteId);
       await mkdir(dir, { recursive: true });
       const dest = path.join(dir, filename);
@@ -92,6 +177,7 @@ export async function registerMediaRoutes(app: FastifyInstance) {
         filename,
         mimeType: file.mimetype,
         size: file.file.bytesRead,
+        provider: "local" as const,
       };
     });
   });
