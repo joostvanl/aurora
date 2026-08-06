@@ -13,6 +13,7 @@ import {
 import { requireUser, requireWebsite, websiteIdFrom } from "./middleware.js";
 import {
   generateApiTokenSecret,
+  generateUserApiTokenSecret,
   serializeApiToken,
 } from "./apiTokens.js";
 import {
@@ -171,6 +172,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     });
 
     authed.post("/api/v1/auth/select-website", async (request, reply) => {
+      if (request.user!.id.startsWith("token:")) {
+        return reply.status(403).send({
+          message:
+            "Website-scoped API tokens cannot switch websites. Use a personal access token (aur_u_…) or a user session.",
+        });
+      }
       const body = SelectWebsiteSchema.parse(request.body);
       const user = await prisma.user.findUniqueOrThrow({
         where: { id: request.user!.id },
@@ -207,6 +214,72 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
       return issueAuthResponse(user, website.id);
     });
+
+    // Personal access tokens (user-scoped, for MCP)
+    authed.get("/api/v1/auth/user-tokens", async (request, reply) => {
+      if (request.user!.id.startsWith("token:")) {
+        return reply.status(403).send({
+          message: "Personal tokens require a user session or aur_u_… token",
+        });
+      }
+      const rows = await prisma.userApiToken.findMany({
+        where: { userId: request.user!.id },
+        orderBy: { createdAt: "desc" },
+      });
+      return rows.map(serializeApiToken);
+    });
+
+    authed.post("/api/v1/auth/user-tokens", async (request, reply) => {
+      if (request.user!.id.startsWith("token:")) {
+        return reply.status(403).send({
+          message: "Personal tokens require a user session or aur_u_… token",
+        });
+      }
+      const body = CreateTokenSchema.parse(request.body);
+      const generated = generateUserApiTokenSecret();
+      const expiresAt =
+        body.expiresInDays != null
+          ? new Date(Date.now() + body.expiresInDays * 86_400_000)
+          : null;
+
+      const row = await prisma.userApiToken.create({
+        data: {
+          userId: request.user!.id,
+          name: body.name.trim(),
+          tokenHash: generated.hash,
+          prefix: generated.prefix,
+          expiresAt,
+        },
+      });
+
+      return {
+        token: generated.raw,
+        ...serializeApiToken(row),
+        warning: "Store this token now — it will not be shown again.",
+      };
+    });
+
+    authed.delete<{ Params: { id: string } }>(
+      "/api/v1/auth/user-tokens/:id",
+      async (request, reply) => {
+        if (request.user!.id.startsWith("token:")) {
+          return reply.status(403).send({
+            message: "Personal tokens require a user session or aur_u_… token",
+          });
+        }
+        const existing = await prisma.userApiToken.findFirst({
+          where: {
+            id: request.params.id,
+            userId: request.user!.id,
+          },
+        });
+        if (!existing) {
+          return reply.status(404).send({ message: "Token not found" });
+        }
+        await prisma.userApiToken.delete({ where: { id: existing.id } });
+        return { ok: true as const };
+      },
+    );
   });
 
   // Website-scoped admin routes (tokens + members)

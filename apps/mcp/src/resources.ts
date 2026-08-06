@@ -2,7 +2,7 @@ import {
   McpServer,
   ResourceTemplate,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { McpContext } from "./client.js";
+import { requireActiveWebsite, type McpContext } from "./client.js";
 
 function textResource(uri: string, text: string, mimeType = "application/json") {
   return {
@@ -16,26 +16,29 @@ export function registerResources(server: McpServer, ctx: McpContext) {
     "aurora://website",
     {
       description:
-        "Active website metadata for the management token (includes siteKey for frontend env).",
+        "Active website metadata (includes siteKey for frontend env).",
       mimeType: "application/json",
     },
-    async (uri) =>
-      textResource(
+    async (uri) => {
+      const website = requireActiveWebsite(ctx);
+      return textResource(
         uri.href,
         JSON.stringify(
           {
-            id: ctx.website.id,
-            name: ctx.website.name,
-            description: ctx.website.description,
-            siteKey: ctx.website.siteKey,
-            allowedOrigins: ctx.website.allowedOrigins,
-            locales: ctx.website.locales,
-            defaultLocale: ctx.website.defaultLocale,
+            id: website.id,
+            name: website.name,
+            description: website.description,
+            siteKey: website.siteKey,
+            allowedOrigins: website.allowedOrigins,
+            locales: website.locales,
+            defaultLocale: website.defaultLocale,
+            role: ctx.role,
           },
           null,
           2,
         ),
-      ),
+      );
+    },
   );
 
   server.resource(

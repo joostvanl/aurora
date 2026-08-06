@@ -5,9 +5,8 @@
       "args": ["REPLACE_WITH_ABSOLUTE_PATH/apps/mcp/dist/index.js"],
       "env": {
         "CMS_API_URL": "http://localhost:4000",
-        "CMS_MANAGEMENT_TOKEN": "aur_YOUR_WEBSITE_TOKEN",
-        "CMS_WEBSITE_ID": "YOUR_WEBSITE_ID",
-        "CMS_SITE_KEY": "your-site-key"
+        "CMS_USER_TOKEN": "aur_u_YOUR_PERSONAL_TOKEN",
+        "CMS_WEBSITE_ID": "OPTIONAL_DEFAULT_WEBSITE_ID"
       }
     }
   }

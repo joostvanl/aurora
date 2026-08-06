@@ -6,7 +6,7 @@ import { toolError, toolOk } from "../errors.js";
 function requirePublic(ctx: McpContext) {
   if (!ctx.publicEnabled) {
     throw new Error(
-      "Public tools require CMS_SITE_KEY matching the management token website. Set CMS_SITE_KEY in the MCP env.",
+      "Public tools need a site key. Set CMS_SITE_KEY, or select_website so MCP can use the website siteKey.",
     );
   }
 }

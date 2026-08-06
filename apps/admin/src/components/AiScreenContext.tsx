@@ -111,6 +111,7 @@ function deriveFromPathname(pathname: string): AiScreenHints {
     };
   }
   if (pathname === "/tokens") return { page: "API tokens" };
+  if (pathname === "/personal-tokens") return { page: "Personal access tokens" };
   if (pathname === "/website") return { page: "Website settings" };
   if (pathname === "/members") return { page: "Members" };
   if (pathname === "/ai") return { page: "AI settings" };

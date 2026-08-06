@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { McpContext } from "./client.js";
+import { requireActiveWebsite, type McpContext } from "./client.js";
 
 export function registerPrompts(server: McpServer, ctx: McpContext) {
   server.prompt(
@@ -12,26 +12,30 @@ export function registerPrompts(server: McpServer, ctx: McpContext) {
         .optional()
         .describe("What the agent should build (types, pages, nav, etc.)"),
     },
-    async ({ goal }) => ({
-      messages: [
-        {
-          role: "user" as const,
-          content: {
-            type: "text" as const,
-            text: [
-              `You are building content on Aurora website "${ctx.website.name}" (${ctx.website.id}).`,
-              "Auth is already configured via MCP (website-scoped management token). Do not ask for passwords.",
-              "1. Call whoami to confirm the tenant.",
-              "2. list_content_types to discover existing schema — do not invent field apiIds.",
-              "3. Prefer provision for bulk idempotent upserts; otherwise create_content_type / create_field / create_entry.",
-              "4. Publish with publish_entry when content should appear on the public site.",
-              "5. After schema changes, use the frontend_brief prompt for frontend agents.",
-              goal ? `\nGoal: ${goal}` : "",
-            ].join("\n"),
+    async ({ goal }) => {
+      const website = requireActiveWebsite(ctx);
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: [
+                `You are building content on Aurora website "${website.name}" (${website.id}).`,
+                "Auth is already configured via MCP (user PAT or website token). Do not ask for passwords.",
+                "1. Call whoami to confirm the tenant and role.",
+                "2. If no website is active, list_websites then select_website.",
+                "3. list_content_types to discover existing schema — do not invent field apiIds.",
+                "4. Prefer provision for bulk idempotent upserts; otherwise create_content_type / create_field / create_entry.",
+                "5. Publish with publish_entry when content should appear on the public site.",
+                "6. After schema changes, use the frontend_brief prompt for frontend agents.",
+                goal ? `\nGoal: ${goal}` : "",
+              ].join("\n"),
+            },
           },
-        },
-      ],
-    }),
+        ],
+      };
+    },
   );
 
   server.prompt(
@@ -44,6 +48,7 @@ export function registerPrompts(server: McpServer, ctx: McpContext) {
         .describe("What changed (types/fields created or updated)"),
     },
     async ({ changedSummary }) => {
+      const website = requireActiveWebsite(ctx);
       const types = await ctx.client.listAdminContentTypes();
       const model = types.map((t) => {
         const fields = (t.fields ?? [])
@@ -84,9 +89,9 @@ export function registerPrompts(server: McpServer, ctx: McpContext) {
                 "",
                 "### Do not",
                 "- Hard-code field names missing from the schema",
-                "- Commit or expose management tokens (aur_…) in the browser",
+                "- Commit or expose management tokens (aur_… / aur_u_…) in the browser",
                 "",
-                `Site key for this website: ${ctx.website.siteKey}`,
+                `Site key for this website: ${website.siteKey}`,
                 `API: ${ctx.apiUrl}`,
               ].join("\n"),
             },
@@ -103,24 +108,27 @@ export function registerPrompts(server: McpServer, ctx: McpContext) {
       contentTypeApiId: z.string().describe("Content type apiId"),
       entrySlugOrId: z.string().describe("Entry slug or id hint"),
     },
-    async ({ contentTypeApiId, entrySlugOrId }) => ({
-      messages: [
-        {
-          role: "user" as const,
-          content: {
-            type: "text" as const,
-            text: [
-              `Edit content on website "${ctx.website.name}".`,
-              `Content type: ${contentTypeApiId}. Target: ${entrySlugOrId}.`,
-              "1. list_entries / get_entry to load current fields.",
-              "2. Prefer str_replace_field for precise edits; write_field only for full rewrites.",
-              "3. Do not invent field apiIds — use get_content_type.",
-              "4. After edits, publish_entry if the change should be public.",
-              "5. Verify with get_published_entry when CMS_SITE_KEY is configured.",
-            ].join("\n"),
+    async ({ contentTypeApiId, entrySlugOrId }) => {
+      const website = requireActiveWebsite(ctx);
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: [
+                `Edit content on website "${website.name}".`,
+                `Content type: ${contentTypeApiId}. Target: ${entrySlugOrId}.`,
+                "1. list_entries / get_entry to load current fields.",
+                "2. Prefer str_replace_field for precise edits; write_field only for full rewrites.",
+                "3. Do not invent field apiIds — use get_content_type.",
+                "4. After edits, publish_entry if the change should be public.",
+                "5. Verify with get_published_entry when public read is enabled.",
+              ].join("\n"),
+            },
           },
-        },
-      ],
-    }),
+        ],
+      };
+    },
   );
 }

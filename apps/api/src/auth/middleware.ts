@@ -33,7 +33,7 @@ export async function requireUser(
   if (!token) {
     return reply.status(401).send({
       message:
-        "Authentication required. Use Authorization: Bearer <jwt|aur_… api token>",
+        "Authentication required. Use Authorization: Bearer <jwt|aur_u_…|aur_…>",
     });
   }
 

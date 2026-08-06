@@ -50,6 +50,13 @@ export function SettingsHub() {
       description: "Switch between websites you belong to, or create a new one.",
       visible: true,
     },
+    {
+      href: "/personal-tokens",
+      title: "Personal access tokens",
+      description:
+        "Create aur_u_… tokens for MCP. One token per person; switch websites with tools.",
+      visible: true,
+    },
   ];
 
   const visible = links.filter((l) => l.visible);

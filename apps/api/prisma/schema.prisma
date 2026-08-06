@@ -59,6 +59,7 @@ model User {
   passwordHash String
   name         String?
   memberships  Membership[]
+  userApiTokens UserApiToken[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -119,6 +120,22 @@ model ApiToken {
   createdAt  DateTime  @default(now())
 
   @@index([websiteId])
+}
+
+/// Personal access token for a user (MCP / agents). Not bound to a website;
+/// call select-website to obtain a JWT with membership role for a site.
+model UserApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model ContentType {

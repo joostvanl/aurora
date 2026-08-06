@@ -650,6 +650,44 @@ export class CmsClient {
     );
   }
 
+  listUserApiTokens() {
+    return this.request<
+      Array<{
+        id: string;
+        name: string;
+        prefix: string;
+        lastUsedAt: string | null;
+        expiresAt: string | null;
+        createdAt: string;
+      }>
+    >("/api/v1/auth/user-tokens", {}, { auth: true });
+  }
+
+  createUserApiToken(input: { name: string; expiresInDays?: number }) {
+    return this.request<{
+      token: string;
+      id: string;
+      name: string;
+      prefix: string;
+      lastUsedAt: string | null;
+      expiresAt: string | null;
+      createdAt: string;
+      warning: string;
+    }>(
+      "/api/v1/auth/user-tokens",
+      { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  deleteUserApiToken(id: string) {
+    return this.request<{ ok: true }>(
+      `/api/v1/auth/user-tokens/${id}`,
+      { method: "DELETE" },
+      { auth: true },
+    );
+  }
+
   /**
    * Upload an image for a `media` field. Returns a public URL to store as the field value.
    */
