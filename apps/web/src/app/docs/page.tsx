@@ -21,7 +21,7 @@ export default async function DocsIndexPage() {
     title: "Start here",
     description: "",
     order: 0,
-    chapter: "",
+    parentSlug: null,
   };
 
   return (

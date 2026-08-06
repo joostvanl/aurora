@@ -6,18 +6,19 @@ export type DocMeta = {
   title: string;
   description: string;
   order: number;
-  /** Nav section label; empty = top-level / ungrouped */
-  chapter: string;
+  /** Slug of parent `doc` entry; null/empty = top-level (shown in docs menu). */
+  parentSlug: string | null;
 };
 
 export type DocPage = DocMeta & {
   body: string;
 };
 
-export type DocChapterGroup = {
-  chapter: string;
-  docs: DocMeta[];
-};
+function relationSlug(entry: FlatEntry, key: string): string | null {
+  const value = entry.fields[key];
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return null;
+}
 
 function toMeta(entry: FlatEntry): DocMeta {
   return {
@@ -25,7 +26,7 @@ function toMeta(entry: FlatEntry): DocMeta {
     title: fieldString(entry, "title", entry.slug),
     description: fieldString(entry, "description"),
     order: fieldNumber(entry, "sortOrder", 0),
-    chapter: fieldString(entry, "chapter").trim(),
+    parentSlug: relationSlug(entry, "parent"),
   };
 }
 
@@ -35,46 +36,36 @@ export async function listDocs(): Promise<DocMeta[]> {
   return entries.map((entry) => toMeta(entry));
 }
 
-/** Integration detail pages — linked from /docs/integrations, not the sidebar. */
-const DOCS_NAV_HIDDEN_SLUGS = new Set([
-  "public-api",
-  "management-api",
-  "admin-api",
-  "mcp",
-]);
-
-/**
- * Sidebar visibility: hide Public API, Management API, Admin API, and MCP.
- * They remain reachable via /docs/integrations and direct URLs.
- */
+/** Top-level docs (no parent) appear in the documentation menu. */
 export function isDocNavVisible(doc: DocMeta): boolean {
-  if (DOCS_NAV_HIDDEN_SLUGS.has(doc.slug)) return false;
-  if (doc.chapter === "Integrations" && doc.slug !== "integrations") {
-    return false;
-  }
-  return true;
+  return !doc.parentSlug;
 }
 
-/** Docs shown in the sidebar (chapter landings + ungrouped pages). */
 export function listNavDocs(catalog: DocMeta[]): DocMeta[] {
   return [...catalog]
     .filter(isDocNavVisible)
     .sort((a, b) => a.order - b.order);
 }
 
-/** Group docs by chapter while preserving global sortOrder. */
-export function groupDocsByChapter(catalog: DocMeta[]): DocChapterGroup[] {
-  const sorted = listNavDocs(catalog);
-  const groups: DocChapterGroup[] = [];
-  for (const doc of sorted) {
-    const last = groups[groups.length - 1];
-    if (last && last.chapter === doc.chapter) {
-      last.docs.push(doc);
-    } else {
-      groups.push({ chapter: doc.chapter, docs: [doc] });
-    }
+export function docsBySlug(catalog: DocMeta[]): Map<string, DocMeta> {
+  return new Map(catalog.map((doc) => [doc.slug, doc]));
+}
+
+/** Walk parent links to the top-level ancestor (for menu active state). */
+export function rootNavSlug(
+  doc: DocMeta,
+  bySlug: Map<string, DocMeta>,
+): string {
+  let current = doc;
+  const seen = new Set<string>();
+  while (current.parentSlug) {
+    if (seen.has(current.slug)) break;
+    seen.add(current.slug);
+    const parent = bySlug.get(current.parentSlug);
+    if (!parent) break;
+    current = parent;
   }
-  return groups;
+  return current.slug;
 }
 
 export async function getDocMeta(slug: string): Promise<DocMeta | null> {
