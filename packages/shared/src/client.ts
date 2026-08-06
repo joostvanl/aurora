@@ -175,10 +175,30 @@ export class CmsClient {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       ...init,
       headers,
+    }).catch((err: unknown) => {
+      const detail = err instanceof Error ? err.message : "network error";
+      if (
+        detail === "Failed to fetch" ||
+        detail === "NetworkError when attempting to fetch resource." ||
+        detail.toLowerCase().includes("fetch")
+      ) {
+        throw new CmsApiError(
+          "Network error talking to the API (connection dropped or timed out). Reasoning models can take longer — retry or pick a faster model.",
+          0,
+        );
+      }
+      throw new CmsApiError(detail, 0);
     });
 
     const text = await res.text();
-    const body = text ? (JSON.parse(text) as unknown) : undefined;
+    let body: unknown = undefined;
+    if (text) {
+      try {
+        body = JSON.parse(text) as unknown;
+      } catch {
+        body = text;
+      }
+    }
 
     if (!res.ok) {
       const message =

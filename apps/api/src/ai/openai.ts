@@ -67,6 +67,29 @@ function providerErrorMessage(parsed: unknown, status: number): string {
     : `AI provider error (${status})`;
 }
 
+/**
+ * Reasoning-style models (OpenAI o-series / GPT-5*) reject non-default
+ * sampling params like temperature=0.3. Chat variants still accept them.
+ */
+export function modelOmitsSamplingParams(model: string): boolean {
+  const id = model.trim().toLowerCase();
+  if (!id) return false;
+  if (/(^|\/)gpt-5-chat/.test(id)) return false;
+  if (/(^|\/)o[1-9]/.test(id)) return true;
+  if (/(^|\/)gpt-5/.test(id)) return true;
+  return false;
+}
+
+function isUnsupportedSamplingError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("temperature") ||
+    m.includes("top_p") ||
+    m.includes("unsupported parameter") ||
+    m.includes("unsupported value")
+  );
+}
+
 /** List models from an OpenAI-compatible `GET /models` endpoint. */
 export async function listProviderModels(options: {
   baseUrl: string;
@@ -139,18 +162,30 @@ export async function chatCompletion(options: {
   responseFormatJson?: boolean;
   /** When set, persist token usage for this website. */
   meter?: AiUsageMeter;
+  /** Internal: skip temperature/top_p (reasoning models / retry). */
+  omitSamplingParams?: boolean;
 }): Promise<ChatCompletionResult> {
   const { config, messages, tools } = options;
   if (!config.baseUrl || !config.apiKey || !config.model) {
     throw Object.assign(new Error("AI is not configured"), { statusCode: 503 });
   }
 
+  const omitSampling =
+    options.omitSamplingParams === true ||
+    modelOmitsSamplingParams(config.model);
+
   const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
-    temperature: 0.3,
   };
+
+  if (!omitSampling) {
+    body.temperature = 0.3;
+  } else {
+    // Reasoning models need headroom for hidden thinking + visible answer.
+    body.max_completion_tokens = 16_384;
+  }
 
   if (tools?.length) {
     body.tools = tools;
@@ -161,14 +196,25 @@ export async function chatCompletion(options: {
     body.response_format = { type: "json_object" };
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "network error";
+    throw Object.assign(
+      new Error(
+        `Could not reach AI provider (${detail}). Check Base URL and that the host allows outbound HTTPS.`,
+      ),
+      { statusCode: 502 },
+    );
+  }
 
   const text = await res.text();
   let parsed: unknown;
@@ -179,6 +225,21 @@ export async function chatCompletion(options: {
   }
 
   if (!res.ok) {
+    const message = providerErrorMessage(parsed, res.status);
+
+    // Reasoning models / gateways often reject temperature — retry without it.
+    if (
+      !omitSampling &&
+      res.status >= 400 &&
+      res.status < 500 &&
+      isUnsupportedSamplingError(message)
+    ) {
+      return chatCompletion({
+        ...options,
+        omitSamplingParams: true,
+      });
+    }
+
     // Some gateways reject response_format — retry once without it.
     if (
       options.responseFormatJson &&
@@ -188,13 +249,11 @@ export async function chatCompletion(options: {
       return chatCompletion({
         ...options,
         responseFormatJson: false,
+        omitSamplingParams: omitSampling,
       });
     }
 
-    throw Object.assign(
-      new Error(providerErrorMessage(parsed, res.status)),
-      { statusCode: 502 },
-    );
+    throw Object.assign(new Error(message), { statusCode: 502 });
   }
 
   const choice = (
