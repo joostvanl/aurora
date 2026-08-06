@@ -92,6 +92,8 @@ export function MediaStudio() {
             Choose where media field uploads go for{" "}
             <strong>this website only</strong>. Local disk is the default.
             ImageKit stores and delivers images via their CDN when configured.
+            ImageKit uploads are auto-optimized (max 2560px on the long edge,
+            quality 80) so large camera files are safe to upload (up to 25MB).
           </p>
           <div style={{ marginBottom: "1rem" }}>
             Status:{" "}

@@ -13,8 +13,7 @@ import {
 import { RolePermission } from "../auth/roles.js";
 import { resolveMediaConfig, toPublicMediaStatus, updateMediaConfig } from "./config.js";
 import { listImageKitFiles, uploadToImageKit } from "./imagekit.js";
-
-const MAX_BYTES = 5 * 1024 * 1024;
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "./limits.js";
 
 const ALLOWED_MIME: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -27,6 +26,10 @@ function httpError(statusCode: number, message: string) {
   const err = new Error(message) as Error & { statusCode: number };
   err.statusCode = statusCode;
   return err;
+}
+
+function tooLargeError() {
+  return httpError(400, `File exceeds maximum size of ${MAX_UPLOAD_LABEL}`);
 }
 
 /** Uploads root: `UPLOADS_DIR` in containers, else monorepo-root `uploads/`. */
@@ -101,7 +104,7 @@ export async function registerMediaRoutes(app: FastifyInstance) {
     admin.post("/api/v1/admin/media", async (request) => {
       const websiteId = websiteIdFrom(request);
       const file = await request.file({
-        limits: { fileSize: MAX_BYTES },
+        limits: { fileSize: MAX_UPLOAD_BYTES },
       });
 
       if (!file) {
@@ -126,12 +129,12 @@ export async function registerMediaRoutes(app: FastifyInstance) {
         } catch (err) {
           const e = err as Error & { code?: string };
           if (e.code === "FST_REQ_FILE_TOO_LARGE") {
-            throw httpError(400, "File exceeds maximum size of 5MB");
+            throw tooLargeError();
           }
           throw err;
         }
-        if (file.file.truncated || buffer.length > MAX_BYTES) {
-          throw httpError(400, "File exceeds maximum size of 5MB");
+        if (file.file.truncated || buffer.length > MAX_UPLOAD_BYTES) {
+          throw tooLargeError();
         }
 
         const uploaded = await uploadToImageKit({
@@ -161,13 +164,13 @@ export async function registerMediaRoutes(app: FastifyInstance) {
       } catch (err) {
         const e = err as Error & { code?: string };
         if (e.code === "FST_REQ_FILE_TOO_LARGE") {
-          throw httpError(400, "File exceeds maximum size of 5MB");
+          throw tooLargeError();
         }
         throw err;
       }
 
       if (file.file.truncated) {
-        throw httpError(400, "File exceeds maximum size of 5MB");
+        throw tooLargeError();
       }
 
       const url = `${publicApiBase(request)}/uploads/${websiteId}/${filename}`;

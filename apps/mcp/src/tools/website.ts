@@ -49,7 +49,7 @@ export function registerWebsiteTools(server: McpServer, ctx: McpContext) {
 
   server.tool(
     "upload_media",
-    "Upload an image file from a local path (jpeg/png/webp/gif, max 5MB). Returns { url, … }.",
+    "Upload an image file from a local path (jpeg/png/webp/gif, max 25MB). With ImageKit, oversized images are auto-downscaled on upload. Returns { url, … }.",
     {
       filePath: z.string().min(1),
       filename: z.string().optional(),

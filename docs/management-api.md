@@ -180,7 +180,7 @@ Field `type`: `text` \| `textarea` \| `richtext` \| `boolean` \| `datetime` \| `
 
 | Method | Path | Body |
 |--------|------|------|
-| POST | `/api/v1/admin/media` | `multipart/form-data` with field `file` (jpeg/png/webp/gif, max 5MB) |
+| POST | `/api/v1/admin/media` | `multipart/form-data` with field `file` (jpeg/png/webp/gif, max 25MB) |
 | GET | `/api/v1/admin/media/status` | — (active provider; ImageKit secrets masked) |
 | GET | `/api/v1/admin/media/library` | ImageKit library (`skip`, `limit`, `q`) — requires ImageKit credentials |
 | PUT | `/api/v1/admin/media/config` | Admin: `{ provider?, publicKey?, privateKey?, clearPrivateKey?, urlEndpoint?, folder? }` |
@@ -188,7 +188,7 @@ Field `type`: `text` \| `textarea` \| `richtext` \| `boolean` \| `datetime` \| `
 Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `url` in a `media` entry field.
 
 - **local** (default): files at `GET /uploads/{websiteId}/{filename}`
-- **imagekit**: when configured in Studio → Settings → Media storage, uploads go to ImageKit CDN (folder `/{optionalFolder}/{websiteId}/`) and `url` is the ImageKit delivery URL
+- **imagekit**: when configured in Studio → Settings → Media storage, uploads go to ImageKit CDN (folder `/{optionalFolder}/{websiteId}/`) and `url` is the ImageKit delivery URL. Oversized images are auto-downscaled on upload (`w/h ≤ 2560`, quality 80) via ImageKit pre-transformation.
 
 ### Entries
 

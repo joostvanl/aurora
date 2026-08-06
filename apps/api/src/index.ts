@@ -10,6 +10,7 @@ import { ZodError } from "zod";
 import { registerPlugins } from "./plugins/index.js";
 import { registerRoutes } from "./routes/index.js";
 import { uploadsRootDir } from "./media/routes.js";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "./media/limits.js";
 import { isCorsOriginAllowed } from "./cors/origins.js";
 import { defaultCodeForStatus } from "./lib/httpError.js";
 
@@ -39,7 +40,7 @@ async function main() {
   });
 
   await app.register(multipart, {
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: MAX_UPLOAD_BYTES },
   });
 
   const uploadsRoot = uploadsRootDir();
@@ -81,7 +82,7 @@ async function main() {
     };
     if (err.code === "FST_REQ_FILE_TOO_LARGE") {
       return reply.status(400).send({
-        message: "File exceeds maximum size of 5MB",
+        message: `File exceeds maximum size of ${MAX_UPLOAD_LABEL}`,
         code: "VALIDATION_FAILED",
       });
     }

@@ -1,4 +1,5 @@
 import type { ResolvedMediaConfig } from "./config.js";
+import { IMAGEKIT_PRE_TRANSFORM } from "./limits.js";
 
 const UPLOAD_URL = "https://upload.imagekit.io/api/v1/files/upload";
 const LIST_URL = "https://api.imagekit.io/v1/files";
@@ -89,6 +90,11 @@ export async function uploadToImageKit(input: {
   form.append("fileName", filename);
   form.append("useUniqueFileName", "true");
   form.append("publicKey", config.publicKey!);
+  // Downscale/compress oversized originals before they hit the Media Library.
+  form.append(
+    "transformation",
+    JSON.stringify({ pre: IMAGEKIT_PRE_TRANSFORM }),
+  );
 
   const folderParts = [
     config.folder?.replace(/^\/+|\/+$/g, ""),
