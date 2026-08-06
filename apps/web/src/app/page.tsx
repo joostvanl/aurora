@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { HeroProductPreview } from "@/components/HeroProductPreview";
 import { RichTextBody } from "@/components/RichTextBody";
 import {
   fieldString,
@@ -93,16 +92,6 @@ export default async function HomePage() {
   const siteName = settings
     ? fieldString(settings, "siteName", "Aurora")
     : "Aurora";
-  const previewLines = [
-    ...services.slice(0, 3).map((s) => ({
-      label: s.slug,
-      value: fieldString(s, "title", s.slug),
-    })),
-    ...projects.slice(0, Math.max(0, 4 - Math.min(services.length, 3))).map((p) => ({
-      label: p.slug,
-      value: fieldString(p, "title", p.slug),
-    })),
-  ].slice(0, 4);
 
   return (
     <>
@@ -127,7 +116,6 @@ export default async function HomePage() {
               </Link>
             </div>
           </div>
-          <HeroProductPreview lines={previewLines} />
         </div>
       </section>
 
