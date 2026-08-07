@@ -6,7 +6,7 @@ import { entryInclude } from "./entries.js";
 type ListWhere = {
   contentTypeId: string;
   status?: "published" | "draft";
-  slug?: string;
+  slug?: string | { contains: string; mode: "insensitive" };
   locale?: string;
 };
 
@@ -30,9 +30,12 @@ export async function listEntriesOrdered(options: {
     const statusFilter = where.status
       ? Prisma.sql`AND e.status = ${where.status}::"EntryStatus"`
       : Prisma.empty;
-    const slugFilter = where.slug
-      ? Prisma.sql`AND e.slug = ${where.slug}`
-      : Prisma.empty;
+    const slugFilter =
+      typeof where.slug === "string"
+        ? Prisma.sql`AND e.slug = ${where.slug}`
+        : where.slug && "contains" in where.slug
+          ? Prisma.sql`AND e.slug ILIKE ${"%" + where.slug.contains + "%"}`
+          : Prisma.empty;
     const localeFilter = where.locale
       ? Prisma.sql`AND e.locale = ${where.locale}`
       : Prisma.empty;
@@ -77,17 +80,22 @@ export async function listEntriesOrdered(options: {
   }
 
   const orderBy =
-    sort === "createdAt"
-      ? [{ createdAt: order } as const]
-      : sort === "updatedAt"
-        ? [{ updatedAt: order } as const]
-        : sort === "sortOrder"
-          ? // No sortOrder field on type — fall back to publishedAt
-            ([{ publishedAt: "desc" as const }, { createdAt: "desc" as const }] as const)
-          : ([
-              { publishedAt: order },
-              { createdAt: order },
-            ] as const);
+    sort === "slug"
+      ? ([{ slug: order }, { locale: "asc" as const }] as const)
+      : sort === "createdAt"
+        ? ([{ createdAt: order }] as const)
+        : sort === "updatedAt"
+          ? ([{ updatedAt: order }] as const)
+          : sort === "sortOrder"
+            ? // No sortOrder field on type — fall back to publishedAt
+              ([
+                { publishedAt: "desc" as const },
+                { createdAt: "desc" as const },
+              ] as const)
+            : ([
+                { publishedAt: order },
+                { createdAt: order },
+              ] as const);
 
   const [items, total] = await Promise.all([
     prisma.entry.findMany({

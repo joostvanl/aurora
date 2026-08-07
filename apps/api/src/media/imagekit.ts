@@ -67,6 +67,35 @@ function imageKitErrorMessage(body: unknown, fallback: string): string {
 }
 
 /**
+ * Folder used to scope the media library browser.
+ * Prefer the configured ImageKit settings folder; fall back to website id
+ * so we never list the entire ImageKit account.
+ */
+export function imageKitLibraryFolderPath(
+  config: ResolvedMediaConfig,
+  websiteFolder?: string,
+): string | null {
+  const settingsFolder = config.folder?.replace(/^\/+|\/+$/g, "");
+  if (settingsFolder) return `/${settingsFolder}`;
+  const site = websiteFolder?.replace(/^\/+|\/+$/g, "");
+  if (site) return `/${site}`;
+  return null;
+}
+
+/** Same folder layout as uploads: /{settingsFolder}/{websiteId}/ */
+export function imageKitUploadFolderPath(
+  config: ResolvedMediaConfig,
+  websiteFolder?: string,
+): string | null {
+  const parts = [
+    config.folder?.replace(/^\/+|\/+$/g, ""),
+    websiteFolder?.replace(/^\/+|\/+$/g, ""),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return `/${parts.join("/")}`;
+}
+
+/**
  * Server-side upload to ImageKit using private API key (Basic auth).
  * @see https://imagekit.io/docs/api-reference/upload-file/upload-file
  */
@@ -96,12 +125,9 @@ export async function uploadToImageKit(input: {
     JSON.stringify({ pre: IMAGEKIT_PRE_TRANSFORM }),
   );
 
-  const folderParts = [
-    config.folder?.replace(/^\/+|\/+$/g, ""),
-    websiteFolder?.replace(/^\/+|\/+$/g, ""),
-  ].filter(Boolean);
-  if (folderParts.length > 0) {
-    form.append("folder", `/${folderParts.join("/")}`);
+  const folder = imageKitUploadFolderPath(config, websiteFolder);
+  if (folder) {
+    form.append("folder", folder);
   }
 
   const res = await fetch(UPLOAD_URL, {
@@ -149,11 +175,14 @@ export async function uploadToImageKit(input: {
 }
 
 /**
- * List image assets from the ImageKit media library.
+ * List image assets from the ImageKit media library, scoped to the folder
+ * configured under Media settings (or the website folder when unset).
  * @see https://imagekit.io/docs/api-reference/media-api/list-and-search-files
  */
 export async function listImageKitFiles(input: {
   config: ResolvedMediaConfig;
+  /** Extra folder segment, typically websiteId — used when settings folder is empty. */
+  websiteFolder?: string;
   skip?: number;
   limit?: number;
   /** Lucene-like name search, e.g. name: "hero" */
@@ -167,17 +196,28 @@ export async function listImageKitFiles(input: {
 
   const params = new URLSearchParams({
     fileType: "image",
-    type: "file",
     skip: String(skip),
     limit: String(limit),
     sort: "DESC_CREATED",
   });
 
+  // Prefer searchQuery so we can scope recursively under the configured folder.
+  // ImageKit's `path` query param only searches one folder level (no nested).
+  const clauses: string[] = [`type = "file"`];
+  const folder = imageKitLibraryFolderPath(config, input.websiteFolder);
+  if (folder) {
+    // Colon operator: folder + all subfolders
+    const scoped = folder.endsWith("/") ? folder : `${folder}/`;
+    clauses.push(`path: "${scoped}"`);
+  }
+
   const search = input.search?.trim();
   if (search) {
     const safe = search.replace(/"/g, "");
-    params.set("searchQuery", `name: "${safe}"`);
+    clauses.push(`name: "${safe}"`);
   }
+
+  params.set("searchQuery", clauses.join(" AND "));
 
   const res = await fetch(`${LIST_URL}?${params.toString()}`, {
     method: "GET",

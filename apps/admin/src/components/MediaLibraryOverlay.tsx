@@ -93,7 +93,8 @@ export function MediaLibraryOverlay({
           <div>
             <h2 id={titleId}>Media library</h2>
             <p className="muted" style={{ margin: "0.15rem 0 0" }}>
-              Images from your ImageKit account. Click one to use it.
+              Images from the ImageKit folder configured in Media settings.
+              Click one to use it.
             </p>
           </div>
           <button
@@ -158,7 +159,7 @@ export function MediaLibraryOverlay({
             <p className="muted media-library-empty">
               {submittedQuery
                 ? "No images matched that search."
-                : "No images found in ImageKit."}
+                : "No images found in this ImageKit folder."}
             </p>
           ) : null}
         </div>

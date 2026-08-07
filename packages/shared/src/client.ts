@@ -64,7 +64,9 @@ export type ListEntriesParams = {
   slug?: string;
   status?: "draft" | "published";
   locale?: string;
-  sort?: "publishedAt" | "createdAt" | "updatedAt" | "sortOrder";
+  /** Case-insensitive slug substring search. */
+  q?: string;
+  sort?: "publishedAt" | "createdAt" | "updatedAt" | "sortOrder" | "slug";
   order?: "asc" | "desc";
 };
 
@@ -495,6 +497,7 @@ export class CmsClient {
     if (params.slug) qs.set("slug", params.slug);
     if (params.status) qs.set("status", params.status);
     if (params.locale) qs.set("locale", params.locale);
+    if (params.q) qs.set("q", params.q);
     if (params.sort) qs.set("sort", params.sort);
     if (params.order) qs.set("order", params.order);
     const query = qs.toString();

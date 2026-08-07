@@ -87,6 +87,7 @@ export async function registerMediaRoutes(app: FastifyInstance) {
       const limit = Number(query.limit ?? 48);
       const listed = await listImageKitFiles({
         config,
+        websiteFolder: websiteId,
         skip: Number.isFinite(skip) ? skip : 0,
         limit: Number.isFinite(limit) ? limit : 48,
         search: typeof query.q === "string" ? query.q : undefined,

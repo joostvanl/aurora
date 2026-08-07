@@ -181,8 +181,9 @@ export function MediaStudio() {
                     Uploads go under{" "}
                     <code>
                       /{folder.trim() || "…"}/{`<websiteId>`}/
-                    </code>{" "}
-                    in ImageKit Media Library.
+                    </code>
+                    . The media library browser only lists images inside this
+                    folder (and its subfolders).
                   </p>
                 </div>
               </>

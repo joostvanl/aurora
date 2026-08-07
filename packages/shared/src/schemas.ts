@@ -224,6 +224,7 @@ export const ListEntriesSortSchema = z.enum([
   "createdAt",
   "updatedAt",
   "sortOrder",
+  "slug",
 ]);
 
 export type ListEntriesSort = z.infer<typeof ListEntriesSortSchema>;
@@ -239,13 +240,16 @@ export const ListEntriesQuerySchema = z
     status: EntryStatusSchema.optional(),
     /** Exact locale filter (e.g. nl-NL). Public API defaults to website.defaultLocale when omitted. */
     locale: LocaleCodeSchema.optional(),
+    /** Case-insensitive slug substring search (admin list). */
+    q: z.string().max(200).optional(),
     sort: ListEntriesSortSchema.optional(),
     order: ListEntriesOrderSchema.optional(),
   })
   .transform((q) => {
     const sort = q.sort ?? "publishedAt";
-    const order = q.order ?? (sort === "sortOrder" ? "asc" : "desc");
-    return { ...q, sort, order };
+    const order = q.order ?? (sort === "sortOrder" || sort === "slug" ? "asc" : "desc");
+    const search = q.q?.trim() || undefined;
+    return { ...q, q: search, sort, order };
   });
 
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;

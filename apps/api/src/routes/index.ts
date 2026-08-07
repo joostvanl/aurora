@@ -509,25 +509,38 @@ export async function registerRoutes(app: FastifyInstance) {
         const query = ListEntriesQuerySchema.parse(request.query);
         const where = {
           contentTypeId: ct.id,
-          ...(query.slug ? { slug: query.slug } : {}),
           ...(query.status ? { status: query.status } : {}),
           ...(query.locale ? { locale: query.locale } : {}),
+          ...(query.slug
+            ? { slug: query.slug }
+            : query.q
+              ? {
+                  slug: {
+                    contains: query.q,
+                    mode: "insensitive" as const,
+                  },
+                }
+              : {}),
         };
-        const [items, total] = await Promise.all([
-          prisma.entry.findMany({
-            where,
-            include: entryInclude,
-            orderBy: [{ slug: "asc" }, { locale: "asc" }],
-            take: query.limit,
-            skip: query.offset,
-          }),
-          prisma.entry.count({ where }),
-        ]);
+        const sortOrderField =
+          query.sort === "sortOrder"
+            ? ct.fields.find((f) => f.apiId === "sortOrder" && f.type === "number")
+            : null;
+        const { items, total } = await listEntriesOrdered({
+          where,
+          sort: query.sort,
+          order: query.order,
+          limit: query.limit,
+          offset: query.offset,
+          sortOrderFieldId: sortOrderField?.id ?? null,
+        });
         return {
           items: items.map(serializeEntry),
           total,
           limit: query.limit,
           offset: query.offset,
+          sort: query.sort,
+          order: query.order,
         };
       },
     );
