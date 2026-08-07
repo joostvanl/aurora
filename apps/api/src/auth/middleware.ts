@@ -83,10 +83,19 @@ export function requireWebsite(minimum?: WebsiteRole) {
     }
 
     const user = request.user;
+    const websiteId = user.websiteId;
+    if (!websiteId) {
+      return reply.status(403).send({
+        message:
+          "Select a website first (POST /api/v1/auth/select-website) or use a website-scoped API token",
+        code: "FORBIDDEN",
+      });
+    }
+
     const isSyntheticToken = user.id.startsWith("token:");
 
     if (!isSyntheticToken) {
-      const live = await loadLiveMembership(user.id, user.websiteId);
+      const live = await loadLiveMembership(user.id, websiteId);
       if (!live) {
         return reply.status(403).send({
           message:
