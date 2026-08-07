@@ -21,6 +21,7 @@ import {
 import { roleAtLeast } from "../auth/roles.js";
 import { serializeForm, serializeFormSubmission, getFormOrThrow, formInclude } from "../lib/forms.js";
 import { httpError, type ApiIssue } from "../lib/httpError.js";
+import { assertRateLimit, clientIpFromHeaders } from "../lib/rateLimit.js";
 
 function assertBuilder(request: { user?: { role?: string | null } }) {
   if (
@@ -175,32 +176,19 @@ function validateSubmissionFields(
 }
 
 /** In-memory sliding window: max 10 submits / minute per siteKey+IP */
-const submitBuckets = new Map<string, number[]>();
-
-function assertRateLimit(key: string) {
-  const now = Date.now();
-  const windowMs = 60_000;
-  const max = 10;
-  const timestamps = (submitBuckets.get(key) ?? []).filter(
-    (t) => now - t < windowMs,
-  );
-  if (timestamps.length >= max) {
-    throw httpError(
-      429,
-      "Too many submissions. Try again shortly.",
-      "RATE_LIMITED",
-    );
-  }
-  timestamps.push(now);
-  submitBuckets.set(key, timestamps);
+function assertSubmitRateLimit(key: string) {
+  assertRateLimit(key, {
+    windowMs: 60_000,
+    max: 10,
+    message: "Too many submissions. Try again shortly.",
+  });
 }
 
 function clientIp(request: FastifyRequest): string {
-  const forwarded = request.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.length > 0) {
-    return forwarded.split(",")[0]?.trim() || "unknown";
-  }
-  return request.ip || "unknown";
+  return clientIpFromHeaders({
+    headers: request.headers as Record<string, unknown>,
+    ip: request.ip,
+  });
 }
 
 function hashIp(ip: string): string {
@@ -236,7 +224,7 @@ export async function registerFormRoutes(app: FastifyInstance) {
         }
 
         const ip = clientIp(request);
-        assertRateLimit(`${websiteId}:${ip}`);
+        assertSubmitRateLimit(`${websiteId}:${ip}`);
 
         const body = SubmitFormSchema.parse(request.body);
         const payload = validateSubmissionFields(form.fields, body.fields);
