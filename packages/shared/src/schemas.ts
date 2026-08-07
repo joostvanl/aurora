@@ -101,6 +101,15 @@ export const FlatEntrySchema = z.object({
   status: EntryStatusSchema,
   locale: z.string(),
   fields: z.record(z.unknown()),
+  /** User who created the entry; null for legacy/system rows. Not writable via update. */
+  createdBy: z
+    .object({
+      id: z.string(),
+      name: z.string().nullable(),
+      email: z.string().email(),
+    })
+    .nullable()
+    .optional(),
   publishedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),

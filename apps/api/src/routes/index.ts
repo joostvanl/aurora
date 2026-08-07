@@ -18,10 +18,12 @@ import {
   requireWebsite,
   websiteIdFrom,
   siteWebsiteIdFrom,
+  userIdFrom,
 } from "../auth/middleware.js";
 import { roleAtLeast } from "../auth/roles.js";
 import { registerAuthRoutes } from "../auth/routes.js";
 import {
+  asCreatedByUserId,
   entryInclude,
   getContentTypeOrThrow,
   setEntryFields,
@@ -621,6 +623,7 @@ export async function registerRoutes(app: FastifyInstance) {
         });
         if (existing) throw httpError(409, `Slug "${body.slug}" already exists for locale ${locale}`);
 
+        const createdByUserId = asCreatedByUserId(userIdFrom(request));
         const entry = await prisma.entry.create({
           data: {
             contentTypeId: ct.id,
@@ -629,6 +632,7 @@ export async function registerRoutes(app: FastifyInstance) {
             status: body.status,
             publishedAt:
               body.status === EntryStatus.published ? new Date() : null,
+            ...(createdByUserId ? { createdByUserId } : {}),
           },
         });
 
@@ -641,6 +645,7 @@ export async function registerRoutes(app: FastifyInstance) {
             sourceEntryId: entry.id,
             sourceLocale: locale,
             locales: website.locales,
+            createdByUserId,
           });
         }
 
@@ -680,6 +685,7 @@ export async function registerRoutes(app: FastifyInstance) {
           sourceEntryId: request.params.entryId,
           locale: body.locale,
           website,
+          createdByUserId: asCreatedByUserId(userIdFrom(request)),
         });
       },
     );
@@ -704,6 +710,7 @@ export async function registerRoutes(app: FastifyInstance) {
           contentTypeId: ct.id,
           locales: website.locales,
           dryRun: body.dryRun,
+          createdByUserId: asCreatedByUserId(userIdFrom(request)),
         });
       },
     );

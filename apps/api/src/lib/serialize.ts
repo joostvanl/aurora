@@ -10,6 +10,7 @@ import { serializeFieldSettings } from "./fieldSettings.js";
 type EntryWithRelations = Entry & {
   contentType: ContentType;
   fieldValues: Array<EntryFieldValue & { field: FieldDefinition }>;
+  createdBy?: { id: string; name: string | null; email: string } | null;
 };
 
 type ContentTypeWithFields = ContentType & {
@@ -98,6 +99,13 @@ export function serializeEntry(
     status: entry.status,
     locale: entry.locale,
     fields,
+    createdBy: entry.createdBy
+      ? {
+          id: entry.createdBy.id,
+          name: entry.createdBy.name,
+          email: entry.createdBy.email,
+        }
+      : null,
     publishedAt: entry.publishedAt?.toISOString() ?? null,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),

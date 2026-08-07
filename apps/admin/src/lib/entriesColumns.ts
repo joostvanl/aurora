@@ -4,6 +4,7 @@ export type BuiltinColumnId =
   | "slug"
   | "locale"
   | "status"
+  | "createdBy"
   | "updatedAt"
   | "createdAt"
   | "publishedAt";
@@ -23,6 +24,7 @@ export const BUILTIN_COLUMNS: ColumnDef[] = [
   { id: "slug", label: "Slug", sortable: true, kind: "builtin" },
   { id: "locale", label: "Locale", sortable: true, kind: "builtin" },
   { id: "status", label: "Status", sortable: true, kind: "builtin" },
+  { id: "createdBy", label: "Creator", sortable: true, kind: "builtin" },
   { id: "updatedAt", label: "Updated", sortable: true, kind: "builtin" },
   { id: "createdAt", label: "Created", sortable: true, kind: "builtin" },
   { id: "publishedAt", label: "Published", sortable: true, kind: "builtin" },
@@ -32,6 +34,7 @@ const DEFAULT_BUILTIN: BuiltinColumnId[] = [
   "slug",
   "locale",
   "status",
+  "createdBy",
   "updatedAt",
 ];
 

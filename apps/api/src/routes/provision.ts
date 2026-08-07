@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { requireWebsite, websiteIdFrom } from "../auth/middleware.js";
+import {
+  requireWebsite,
+  websiteIdFrom,
+  userIdFrom,
+} from "../auth/middleware.js";
 import { RolePermission } from "../auth/roles.js";
+import { asCreatedByUserId } from "../lib/entries.js";
 import {
   applyContentTypes,
   ProvisionSchema,
@@ -19,6 +24,7 @@ export async function registerProvisionRoutes(app: FastifyInstance) {
       const body = ProvisionSchema.parse(request.body);
       const { results } = await applyContentTypes(websiteId, body.contentTypes, {
         mode: "overwrite",
+        createdByUserId: asCreatedByUserId(userIdFrom(request)),
       });
       return { ok: true as const, results };
     });

@@ -10,7 +10,19 @@ import {
 export const entryInclude = {
   contentType: true,
   fieldValues: { include: { field: true } },
+  createdBy: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.EntryInclude;
+
+/**
+ * Only real User ids may be stored as createdBy (website API tokens can use
+ * synthetic `token:…` ids that are not in the User table).
+ */
+export function asCreatedByUserId(
+  userId: string | null | undefined,
+): string | null {
+  if (!userId || userId.startsWith("token:")) return null;
+  return userId;
+}
 
 export async function setEntryFields(
   entryId: string,

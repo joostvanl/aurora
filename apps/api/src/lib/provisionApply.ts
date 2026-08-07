@@ -117,9 +117,12 @@ export type ApplyContentResult = {
 export async function applyContentTypes(
   websiteId: string,
   contentTypes: TypeSpec[],
-  options: { mode: ApplyMode } = { mode: "overwrite" },
+  options: { mode: ApplyMode; createdByUserId?: string | null } = {
+    mode: "overwrite",
+  },
 ): Promise<ApplyContentResult> {
   const mode = options.mode;
+  const createdByUserId = options.createdByUserId ?? null;
   const results: ApplyContentResult["results"] = [];
   const ctCounters = emptyCounters();
   const entryCounters = emptyCounters();
@@ -241,6 +244,7 @@ export async function applyContentTypes(
             locale,
             status,
             publishedAt: status === EntryStatus.published ? new Date() : null,
+            ...(createdByUserId ? { createdByUserId } : {}),
           },
         });
         if (entrySpec.fields) {

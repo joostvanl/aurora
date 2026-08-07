@@ -29,6 +29,7 @@ export async function createTranslationFromEntry(options: {
   sourceEntryId: string;
   locale: string;
   website: { locales: string[]; defaultLocale: string };
+  createdByUserId?: string | null;
 }) {
   assertLocaleOnWebsite(options.locale, options.website);
 
@@ -66,6 +67,9 @@ export async function createTranslationFromEntry(options: {
       locale: options.locale,
       status: EntryStatus.draft,
       publishedAt: null,
+      ...(options.createdByUserId
+        ? { createdByUserId: options.createdByUserId }
+        : {}),
     },
   });
 
@@ -91,6 +95,7 @@ export async function createAllLocaleSiblings(options: {
   sourceEntryId: string;
   sourceLocale: string;
   locales: string[];
+  createdByUserId?: string | null;
 }) {
   const siblings = [];
   for (const locale of options.locales) {
@@ -122,6 +127,9 @@ export async function createAllLocaleSiblings(options: {
         locale,
         status: EntryStatus.draft,
         publishedAt: null,
+        ...(options.createdByUserId
+          ? { createdByUserId: options.createdByUserId }
+          : {}),
       },
     });
     await copyFieldValues(
@@ -146,6 +154,7 @@ export async function syncMissingLocalesForType(options: {
   contentTypeId: string;
   locales: string[];
   dryRun?: boolean;
+  createdByUserId?: string | null;
 }) {
   const entries = await prisma.entry.findMany({
     where: { contentTypeId: options.contentTypeId },
@@ -185,6 +194,9 @@ export async function syncMissingLocalesForType(options: {
         locale: item.locale,
         status: EntryStatus.draft,
         publishedAt: null,
+        ...(options.createdByUserId
+          ? { createdByUserId: options.createdByUserId }
+          : {}),
       },
     });
     await copyFieldValues(

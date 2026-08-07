@@ -17,6 +17,11 @@ import {
   saveColumnPrefs,
 } from "@/lib/entriesColumns";
 
+function creatorLabel(entry: FlatEntry): string {
+  if (!entry.createdBy) return "";
+  return entry.createdBy.name?.trim() || entry.createdBy.email;
+}
+
 function cellSearchText(entry: FlatEntry, col: ColumnDef): string {
   if (col.kind === "builtin") {
     switch (col.id) {
@@ -26,6 +31,8 @@ function cellSearchText(entry: FlatEntry, col: ColumnDef): string {
         return entry.locale;
       case "status":
         return entry.status;
+      case "createdBy":
+        return creatorLabel(entry);
       case "updatedAt":
         return entry.updatedAt;
       case "createdAt":
@@ -118,6 +125,14 @@ function renderCell(entry: FlatEntry, col: ColumnDef): ReactNode {
           {entry.status}
         </span>
       );
+    case "createdBy": {
+      const label = creatorLabel(entry);
+      return label ? (
+        <span title={entry.createdBy?.email}>{label}</span>
+      ) : (
+        <span className="muted">—</span>
+      );
+    }
     case "updatedAt":
       return (
         <span className="muted">
@@ -162,6 +177,8 @@ function compareEntries(
           return entry.locale.toLowerCase();
         case "status":
           return entry.status;
+        case "createdBy":
+          return creatorLabel(entry).toLowerCase();
         case "updatedAt":
           return new Date(entry.updatedAt).getTime();
         case "createdAt":

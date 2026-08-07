@@ -2,9 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import JSZip from "jszip";
 import { prisma } from "../db.js";
-import { requireWebsite, websiteIdFrom } from "../auth/middleware.js";
+import { requireWebsite, websiteIdFrom, userIdFrom } from "../auth/middleware.js";
 import { RolePermission } from "../auth/roles.js";
-import { entryInclude } from "../lib/entries.js";
+import { asCreatedByUserId, entryInclude } from "../lib/entries.js";
 import { formInclude, serializeForm } from "../lib/forms.js";
 import { serializeEntry } from "../lib/serialize.js";
 import {
@@ -352,6 +352,7 @@ export async function registerPackageRoutes(app: FastifyInstance) {
 
       const contentApply = await applyContentTypes(websiteId, contentTypes, {
         mode,
+        createdByUserId: asCreatedByUserId(userIdFrom(request)),
       });
       const formsApply = await applyForms(websiteId, formsRaw.forms, { mode });
 

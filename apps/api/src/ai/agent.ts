@@ -217,6 +217,7 @@ export async function runAiChat(input: {
       const result = await executeAiTool(call.function.name, args, {
         websiteId: input.websiteId,
         role: input.role,
+        userId: input.userId,
         schemaChangeConfirmed,
         ensureAiSnapshot: async (entryId, label) => {
           const version = await ensureAiSnapshot(entryId, label);

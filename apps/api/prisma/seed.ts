@@ -318,6 +318,7 @@ async function upsertEntry(
   slug: string,
   fields: Record<string, unknown>,
   status: EntryStatus = EntryStatus.published,
+  createdByUserId?: string,
 ) {
   const contentType = await prisma.contentType.findUniqueOrThrow({
     where: { websiteId_apiId: { websiteId, apiId: contentTypeApiId } },
@@ -344,6 +345,7 @@ async function upsertEntry(
         status,
         locale: "en-US",
         publishedAt: status === EntryStatus.published ? new Date() : null,
+        ...(createdByUserId ? { createdByUserId } : {}),
       },
     });
   } else {
@@ -700,6 +702,7 @@ async function main() {
           locale: "nl-NL",
           status: EntryStatus.published,
           publishedAt: new Date(),
+          createdByUserId: user.id,
         },
       });
     }
@@ -1148,6 +1151,16 @@ async function main() {
   const { seedDocsForWebsite } = await import("./seed-docs.js");
   const docCount = await seedDocsForWebsite(uid);
   console.log(`Seeded ${docCount} documentation entries (content type doc).`);
+
+  // Attribute seeded content to the demo user (new + previously null creators).
+  const attributed = await prisma.entry.updateMany({
+    where: {
+      createdByUserId: null,
+      contentType: { websiteId: uid },
+    },
+    data: { createdByUserId: user.id },
+  });
+  console.log(`Attributed ${attributed.count} entries to ${DEMO_EMAIL}.`);
 
   console.log(
     `Seed completed for ${DEMO_EMAIL} (password: ${DEMO_PASSWORD}, siteKey: ${DEMO_SITE_KEY}, apiToken: ${DEMO_API_TOKEN}).`,

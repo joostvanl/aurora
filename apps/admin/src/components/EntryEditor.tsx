@@ -381,6 +381,28 @@ export function EntryEditor({
             </div>
           )}
 
+          {current ? (
+            <div className="field">
+              <label htmlFor="createdBy">Creator</label>
+              <input
+                id="createdBy"
+                value={
+                  current.createdBy
+                    ? current.createdBy.name?.trim() ||
+                      current.createdBy.email
+                    : "—"
+                }
+                readOnly
+                disabled
+                title={
+                  current.createdBy
+                    ? `${current.createdBy.email} (${current.createdBy.id})`
+                    : "No creator recorded (legacy or system entry)"
+                }
+              />
+            </div>
+          ) : null}
+
           {fields.map((f) =>
             isSlugField(f) ? (
               <div className="field" key={f.id}>

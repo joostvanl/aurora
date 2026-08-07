@@ -9,6 +9,7 @@ import { prisma } from "../db.js";
 import { hooks } from "../core/hooks.js";
 import { roleAtLeast, RolePermission } from "../auth/roles.js";
 import {
+  asCreatedByUserId,
   entryInclude,
   getContentTypeOrThrow,
   setEntryFields,
@@ -740,12 +741,15 @@ export async function executeAiTool(
   ctx: {
     websiteId: string;
     role: WebsiteRole;
+    /** Acting user (for entry createdBy). */
+    userId?: string;
     /** Explicit user approval required before content-type / field mutations. */
     schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
   },
 ): Promise<ToolResult> {
   const { websiteId, role } = ctx;
+  const createdByUserId = asCreatedByUserId(ctx.userId);
   const ensureSnapshot = async (entryId: string | undefined) => {
     if (entryId && ctx.ensureAiSnapshot) {
       await ctx.ensureAiSnapshot(entryId);
@@ -1040,6 +1044,7 @@ export async function executeAiTool(
             locale,
             status,
             publishedAt: status === EntryStatus.published ? new Date() : null,
+            ...(createdByUserId ? { createdByUserId } : {}),
           },
         });
         await setEntryFields(entry.id, ct.id, fields, websiteId, locale);
@@ -1051,6 +1056,7 @@ export async function executeAiTool(
             sourceEntryId: entry.id,
             sourceLocale: locale,
             locales: website.locales,
+            createdByUserId,
           });
         }
 

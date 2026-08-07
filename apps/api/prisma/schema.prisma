@@ -60,6 +60,7 @@ model User {
   name         String?
   memberships  Membership[]
   userApiTokens UserApiToken[]
+  createdEntries Entry[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -180,6 +181,9 @@ model Entry {
   slug          String
   status        EntryStatus       @default(draft)
   locale        String            @default("en-US")
+  /** User who created this entry. Immutable after create; null for legacy/system rows. */
+  createdByUserId String?
+  createdBy     User?             @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   publishedAt   DateTime?
   fieldValues   EntryFieldValue[]
   versions      EntryVersion[]
@@ -189,6 +193,7 @@ model Entry {
   @@unique([contentTypeId, slug, locale])
   @@index([contentTypeId, status])
   @@index([contentTypeId, publishedAt])
+  @@index([createdByUserId])
 }
 
 model EntryFieldValue {
