@@ -3,6 +3,7 @@ import type { WebsiteRole } from "@prisma/client";
 import { prisma } from "../db.js";
 import { verifyAccessToken, type AuthUser } from "./password.js";
 import { looksLikeApiToken, resolveApiToken } from "./apiTokens.js";
+import { applyLiveMembership, loadLiveMembership } from "./membership.js";
 import { roleAtLeast } from "./roles.js";
 
 declare module "fastify" {
@@ -41,7 +42,9 @@ export async function requireUser(
     if (looksLikeApiToken(token)) {
       const user = await resolveApiToken(token);
       if (!user) {
-        return reply.status(401).send({ message: "Invalid or expired API token" });
+        return reply.status(401).send({
+          message: "Invalid or expired API token",
+        });
       }
       request.user = user;
       request.authMethod = "api_token";
@@ -58,6 +61,10 @@ export async function requireUser(
 /**
  * Requires authenticated user with an active website context.
  * Optional minimum role (editor < builder < admin).
+ *
+ * For real user identities (JWT / user PAT / website token with creator),
+ * Membership is re-loaded on every request so role demotion/removal applies
+ * immediately. Synthetic `token:…` website tokens keep the token-bound role.
  */
 export function requireWebsite(minimum?: WebsiteRole) {
   return async function requireWebsiteHandler(
@@ -67,16 +74,39 @@ export function requireWebsite(minimum?: WebsiteRole) {
     await requireUser(request, reply);
     if (reply.sent) return;
 
-    if (!request.user?.websiteId || !request.user.role) {
+    if (!request.user?.websiteId) {
       return reply.status(403).send({
         message:
           "Select a website first (POST /api/v1/auth/select-website) or use a website-scoped API token",
+        code: "FORBIDDEN",
       });
     }
 
-    if (minimum && !roleAtLeast(request.user.role, minimum)) {
+    const user = request.user;
+    const isSyntheticToken = user.id.startsWith("token:");
+
+    if (!isSyntheticToken) {
+      const live = await loadLiveMembership(user.id, user.websiteId);
+      if (!live) {
+        return reply.status(403).send({
+          message:
+            "You no longer have access to this website. Select another website.",
+          code: "FORBIDDEN",
+        });
+      }
+      applyLiveMembership(user, live);
+    } else if (!user.role) {
       return reply.status(403).send({
-        message: `Requires role ${minimum} or higher (current: ${request.user.role})`,
+        message:
+          "Select a website first (POST /api/v1/auth/select-website) or use a website-scoped API token",
+        code: "FORBIDDEN",
+      });
+    }
+
+    if (minimum && !roleAtLeast(user.role, minimum)) {
+      return reply.status(403).send({
+        message: `Requires role ${minimum} or higher (current: ${user.role})`,
+        code: "FORBIDDEN",
       });
     }
   };

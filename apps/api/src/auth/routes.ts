@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import {
@@ -28,6 +28,7 @@ import {
   assertLocalesRemovable,
   normalizeWebsiteLocalesInput,
 } from "../lib/locales.js";
+import { assertRateLimit, clientIpFromHeaders } from "../lib/rateLimit.js";
 
 const RegisterSchema = z.object({
   email: z.string().email(),
@@ -101,45 +102,94 @@ function serializeWebsite(website: {
   };
 }
 
+function clientIp(request: FastifyRequest): string {
+  return clientIpFromHeaders({
+    headers: request.headers as Record<string, unknown>,
+    ip: request.ip,
+  });
+}
+
+function assertAuthRateLimit(kind: "login" | "register", request: FastifyRequest, email?: string) {
+  const ip = clientIp(request);
+  if (kind === "login") {
+    assertRateLimit(`auth:login:${ip}:${email ?? ""}`, {
+      windowMs: 60_000,
+      max: 10,
+      message: "Too many login attempts. Try again shortly.",
+    });
+    return;
+  }
+  assertRateLimit(`auth:register:${ip}`, {
+    windowMs: 60_000,
+    max: 5,
+    message: "Too many registration attempts. Try again shortly.",
+  });
+}
+
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.post("/api/v1/auth/register", async (request, reply) => {
-    const body = RegisterSchema.parse(request.body);
-    const email = body.email.toLowerCase().trim();
+    try {
+      const body = RegisterSchema.parse(request.body);
+      const email = body.email.toLowerCase().trim();
+      assertAuthRateLimit("register", request);
 
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return reply.status(409).send({ message: "Email already registered" });
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        return reply.status(409).send({ message: "Email already registered" });
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          email,
+          name: body.name?.trim() || null,
+          passwordHash: hashPassword(body.password),
+        },
+      });
+
+      const websiteName =
+        body.websiteName?.trim() ||
+        (body.name?.trim() ? `${body.name.trim()}'s site` : "My website");
+
+      await createWebsiteWithAdmin({
+        userId: user.id,
+        name: websiteName,
+      });
+
+      return issueAuthResponse(user);
+    } catch (err) {
+      const e = err as Error & { statusCode?: number; apiCode?: string };
+      if (e.statusCode === 429) {
+        return reply.status(429).send({
+          message: e.message,
+          code: e.apiCode ?? "RATE_LIMITED",
+        });
+      }
+      throw err;
     }
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: body.name?.trim() || null,
-        passwordHash: hashPassword(body.password),
-      },
-    });
-
-    const websiteName =
-      body.websiteName?.trim() ||
-      (body.name?.trim() ? `${body.name.trim()}'s site` : "My website");
-
-    await createWebsiteWithAdmin({
-      userId: user.id,
-      name: websiteName,
-    });
-
-    return issueAuthResponse(user);
   });
 
   app.post("/api/v1/auth/login", async (request, reply) => {
-    const body = LoginSchema.parse(request.body);
-    const email = body.email.toLowerCase().trim();
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !verifyPassword(body.password, user.passwordHash)) {
-      return reply.status(401).send({ message: "Invalid email or password" });
-    }
+    try {
+      const body = LoginSchema.parse(request.body);
+      const email = body.email.toLowerCase().trim();
+      assertAuthRateLimit("login", request, email);
 
-    return issueAuthResponse(user);
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !verifyPassword(body.password, user.passwordHash)) {
+        return reply.status(401).send({ message: "Invalid email or password" });
+      }
+
+      return issueAuthResponse(user);
+    } catch (err) {
+      const e = err as Error & { statusCode?: number; apiCode?: string };
+      if (e.statusCode === 429) {
+        return reply.status(429).send({
+          message: e.message,
+          code: e.apiCode ?? "RATE_LIMITED",
+        });
+      }
+      throw err;
+    }
   });
 
   app.register(async (authed) => {
