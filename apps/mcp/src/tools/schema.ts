@@ -14,6 +14,8 @@ const fieldType = z.enum([
   "media",
   "relation",
   "relations",
+  "username",
+  "password",
 ]);
 
 export function registerSchemaTools(server: McpServer, ctx: McpContext) {

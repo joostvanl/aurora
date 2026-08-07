@@ -35,9 +35,24 @@ function valuesFromEntry(
 ): Record<string, unknown> {
   const initial: Record<string, unknown> = {};
   for (const f of fields) {
+    if (f.type === "password") {
+      // Never put hash or { set: true } into the controlled input.
+      initial[f.apiId] = "";
+      continue;
+    }
     initial[f.apiId] = entry?.fields[f.apiId] ?? fieldDefault(f.type);
   }
   return initial;
+}
+
+function isPasswordAlreadySet(entry: FlatEntry | undefined, apiId: string): boolean {
+  const raw = entry?.fields[apiId];
+  return (
+    typeof raw === "object" &&
+    raw !== null &&
+    !Array.isArray(raw) &&
+    (raw as { set?: unknown }).set === true
+  );
 }
 
 function isSlugField(field: FieldDefinition): boolean {
@@ -427,6 +442,7 @@ export function EntryEditor({
                 <FieldInput
                   field={f}
                   value={values[f.apiId]}
+                  passwordAlreadySet={isPasswordAlreadySet(current ?? undefined, f.apiId)}
                   onChange={(v) => setField(f.apiId, v)}
                 />
               </div>
@@ -490,10 +506,12 @@ function FieldInput({
   field,
   value,
   onChange,
+  passwordAlreadySet = false,
 }: {
   field: FieldDefinition;
   value: unknown;
   onChange: (v: unknown) => void;
+  passwordAlreadySet?: boolean;
 }) {
   switch (field.type) {
     case "boolean":
@@ -579,6 +597,38 @@ function FieldInput({
           onChange={onChange}
           required={field.required}
         />
+      );
+    case "username":
+      return (
+        <input
+          id={field.apiId}
+          type="text"
+          autoComplete="username"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          required={field.required}
+        />
+      );
+    case "password":
+      return (
+        <div style={{ display: "grid", gap: "0.35rem" }}>
+          <input
+            id={field.apiId}
+            type="password"
+            autoComplete="new-password"
+            value={typeof value === "string" ? value : ""}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.required && !passwordAlreadySet}
+            placeholder={
+              passwordAlreadySet ? "Leave blank to keep current password" : undefined
+            }
+          />
+          {passwordAlreadySet ? (
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Password is set. Leave blank to keep it unchanged.
+            </span>
+          ) : null}
+        </div>
       );
     default:
       return (

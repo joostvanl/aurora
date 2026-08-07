@@ -6,6 +6,10 @@ import {
   normalizeRelationFieldValue,
   parseFieldSettings,
 } from "./fieldSettings.js";
+import {
+  hashPasswordFieldValue,
+  isPasswordLeaveUnchanged,
+} from "./passwordFields.js";
 
 export const entryInclude = {
   contentType: true,
@@ -61,6 +65,23 @@ export async function setEntryFields(
   for (const [apiId, value] of Object.entries(fields)) {
     const def = byApiId.get(apiId);
     if (!def) continue;
+
+    if (def.type === "password") {
+      if (isPasswordLeaveUnchanged(value)) continue;
+      const stored = hashPasswordFieldValue(value);
+      await prisma.entryFieldValue.upsert({
+        where: {
+          entryId_fieldId: { entryId, fieldId: def.id },
+        },
+        create: {
+          entryId,
+          fieldId: def.id,
+          value: stored,
+        },
+        update: { value: stored },
+      });
+      continue;
+    }
 
     let stored: Prisma.InputJsonValue | typeof PrismaNS.JsonNull =
       value as Prisma.InputJsonValue;

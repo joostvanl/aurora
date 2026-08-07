@@ -6,6 +6,7 @@ import type {
 } from "@prisma/client";
 import type { FlatEntry, FieldSettings, MediaValue } from "@cms/shared";
 import { serializeFieldSettings } from "./fieldSettings.js";
+import { redactPasswordFieldValue } from "./passwordFields.js";
 
 type EntryWithRelations = Entry & {
   contentType: ContentType;
@@ -85,6 +86,10 @@ export function serializeEntry(
   const normalizeMedia = options?.normalizeMedia === true;
   const fields: Record<string, unknown> = {};
   for (const fv of entry.fieldValues) {
+    if (fv.field.type === "password") {
+      fields[fv.field.apiId] = redactPasswordFieldValue(fv.value);
+      continue;
+    }
     if (normalizeMedia && fv.field.type === "media") {
       fields[fv.field.apiId] = normalizeMediaValue(fv.value);
     } else {

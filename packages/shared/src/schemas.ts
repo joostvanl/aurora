@@ -11,6 +11,8 @@ export const FieldTypeSchema = z.enum([
   "media",
   "relation",
   "relations",
+  "username",
+  "password",
 ]);
 
 export type FieldType = z.infer<typeof FieldTypeSchema>;
@@ -48,7 +50,14 @@ export type FieldSettings = z.infer<typeof FieldSettingsSchema>;
 /** Default contentFormat when not stored on the field. */
 export function defaultContentFormat(type: FieldType): ContentFormat {
   if (type === "richtext") return "html";
-  if (type === "textarea" || type === "text") return "plain";
+  if (
+    type === "textarea" ||
+    type === "text" ||
+    type === "username" ||
+    type === "password"
+  ) {
+    return "plain";
+  }
   return "plain";
 }
 

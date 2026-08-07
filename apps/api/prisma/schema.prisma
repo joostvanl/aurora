@@ -24,6 +24,8 @@ enum FieldType {
   media
   relation
   relations
+  username
+  password
 }
 
 enum FormFieldType {
