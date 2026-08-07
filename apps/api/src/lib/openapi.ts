@@ -97,7 +97,28 @@ function fieldToJsonSchema(
     case "textarea":
     case "text":
     case "slug":
+    case "username":
     case "relation":
+      return {
+        ...base,
+        type: "string",
+        "x-aurora-contentFormat": contentFormat,
+      };
+    case "password":
+      return {
+        ...base,
+        description: `${base.description}; write-only plaintext, stored hashed; reads return { set: true } or null`,
+        oneOf: [
+          { type: "string", description: "New password plaintext (write only)" },
+          {
+            type: "object",
+            properties: { set: { type: "boolean", const: true } },
+            required: ["set"],
+            description: "Password is set (read only)",
+          },
+          { type: "null" },
+        ],
+      };
     default:
       return {
         ...base,

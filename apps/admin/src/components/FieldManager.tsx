@@ -19,6 +19,8 @@ const FIELD_TYPES: FieldType[] = [
   "datetime",
   "number",
   "slug",
+  "username",
+  "password",
   "media",
   "relation",
   "relations",
@@ -28,6 +30,8 @@ function fieldTypeLabel(type: FieldType): string {
   if (type === "media") return "Image (upload)";
   if (type === "relation") return "Relation (single)";
   if (type === "relations") return "Relations (multi)";
+  if (type === "username") return "Username";
+  if (type === "password") return "Password (hashed)";
   return type;
 }
 
@@ -36,7 +40,12 @@ function isRelationType(type: FieldType): boolean {
 }
 
 function supportsContentFormat(type: FieldType): boolean {
-  return type === "textarea" || type === "richtext" || type === "text";
+  return (
+    type === "textarea" ||
+    type === "richtext" ||
+    type === "text" ||
+    type === "username"
+  );
 }
 
 function buildFieldSettings(
