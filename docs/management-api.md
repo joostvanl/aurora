@@ -203,6 +203,10 @@ Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `
 | DELETE | `.../entries/:entryId` | — |
 | POST | `.../entries/:entryId/publish` | Public visibility |
 | POST | `.../entries/:entryId/unpublish` | Back to draft |
+| POST | `.../entries/:entryId/verify-password` | `{ password, fieldApiId? }` — check plaintext against a hashed `password` field (draft or published). Success `{ ok: true, fieldApiId }`. Wrong password → `401` `INVALID_CREDENTIALS`. Missing field → `404` `PASSWORD_FIELD_NOT_FOUND`. Unset → `400` `PASSWORD_NOT_SET`. Never returns the hash. |
+| POST | `.../verify-credentials` | `{ slug, username, password, locale?, usernameFieldApiId?, passwordFieldApiId? }` — look up entry by slug (+ locale, default website `defaultLocale`) and verify username + password fields. Success includes `entryId`. Wrong username/password/unknown slug → `401` `INVALID_CREDENTIALS` (no distinction). |
+
+Password verify endpoints are **management-only** (not available with `x-site-key`). Use them from a trusted backend (e.g. TraceAI `POST /v1/ui/login/verify`) so frontends never see hashes or management tokens.
 
 ### Versions & AI
 

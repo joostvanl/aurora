@@ -18,6 +18,8 @@ import type {
   UpdateFormFieldInput,
   UpdateFormInput,
   UpdateFormSubmissionInput,
+  VerifyEntryCredentialsInput,
+  VerifyEntryPasswordInput,
 } from "./schemas.js";
 import type {
   AiChatRequest,
@@ -520,6 +522,39 @@ export class CmsClient {
     return this.request<PreviewTokenResult>(
       `/api/v1/admin/content-types/${apiId}/entries/${entryId}/preview-token`,
       { method: "POST" },
+      { auth: true },
+    );
+  }
+
+  /**
+   * Verify plaintext against a hashed password field on an entry (management only).
+   * Never returns the hash. Wrong password → 401.
+   */
+  verifyEntryPassword(
+    apiId: string,
+    entryId: string,
+    input: VerifyEntryPasswordInput,
+  ) {
+    return this.request<{ ok: true; fieldApiId: string }>(
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/verify-password`,
+      { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  /**
+   * Look up an entry by slug and verify username + password fields (management only).
+   */
+  verifyEntryCredentials(apiId: string, input: VerifyEntryCredentialsInput) {
+    return this.request<{
+      ok: true;
+      entryId: string;
+      slug: string;
+      usernameFieldApiId: string;
+      passwordFieldApiId: string;
+    }>(
+      `/api/v1/admin/content-types/${apiId}/verify-credentials`,
+      { method: "POST", body: JSON.stringify(input) },
       { auth: true },
     );
   }

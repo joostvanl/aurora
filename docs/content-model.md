@@ -113,7 +113,14 @@ Use these when modeling a **user-like content type** (e.g. `apiId: "account"`) w
 }
 ```
 
-**Out of scope of these field types alone:** end-user login/session against content entries, username uniqueness, or invite flows. Hashing + redaction only make it safe to *store* credentials on entries.
+**Out of scope of these field types alone:** username uniqueness, invite flows, or browser sessions/cookies issued by Aurora. Hashing + redaction only make it safe to *store* credentials on entries.
+
+**Server-side verify (management API):** trusted backends can check a plaintext password without reading the hash:
+
+- `POST /api/v1/admin/content-types/:apiId/entries/:entryId/verify-password` — `{ "password": "…", "fieldApiId"? }` (default field `password`)
+- `POST /api/v1/admin/content-types/:apiId/verify-credentials` — `{ "slug", "username", "password", "locale"?, "usernameFieldApiId"?, "passwordFieldApiId"? }`
+
+Both require management auth (`Bearer aur_…` / JWT), work on **draft and published** entries, use the same timing-safe scrypt helper as studio login, and never return the hash or plaintext. Wrong password → `401` (`INVALID_CREDENTIALS`). Missing / unset password field → `404` (`PASSWORD_FIELD_NOT_FOUND`) or `400` (`PASSWORD_NOT_SET`). Not available on the public (`x-site-key`) API — see [management-api.md](./management-api.md).
 
 ## Entry
 

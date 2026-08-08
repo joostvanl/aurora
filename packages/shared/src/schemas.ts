@@ -224,6 +224,33 @@ export const UpdateEntrySchema = z.object({
 
 export type UpdateEntryInput = z.infer<typeof UpdateEntrySchema>;
 
+/** Management: verify plaintext against a hashed password field on an entry. */
+export const VerifyEntryPasswordSchema = z.object({
+  password: z.string().min(1),
+  /** Field apiId of type `password`. Defaults to `"password"`. */
+  fieldApiId: z.string().min(1).default("password"),
+});
+
+export type VerifyEntryPasswordInput = z.input<typeof VerifyEntryPasswordSchema>;
+
+/**
+ * Management: look up an entry by slug and verify username + password fields.
+ * Useful for app login flows (e.g. TraceAI UI credentials in CMS).
+ */
+export const VerifyEntryCredentialsSchema = z.object({
+  slug: z.string().min(1),
+  username: z.string().min(1),
+  password: z.string().min(1),
+  /** Omit to use the website defaultLocale. */
+  locale: LocaleCodeSchema.optional(),
+  usernameFieldApiId: z.string().min(1).default("username"),
+  passwordFieldApiId: z.string().min(1).default("password"),
+});
+
+export type VerifyEntryCredentialsInput = z.input<
+  typeof VerifyEntryCredentialsSchema
+>;
+
 export const CreateTranslationSchema = z.object({
   locale: LocaleCodeSchema,
 });

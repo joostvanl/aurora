@@ -81,7 +81,7 @@ After changing MCP env in Cursor, refresh the MCP server list (or reload the win
 
 **Schema:** `list_content_types`, `get_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `create_field`, `update_field`, `delete_field`
 
-**Entries:** `list_entries`, `get_entry`, `create_entry`, `update_entry`, `delete_entry`, `publish_entry`, `unpublish_entry`, `write_field`, `str_replace_field`, `create_preview_token`, `provision`
+**Entries:** `list_entries`, `get_entry`, `create_entry`, `update_entry`, `delete_entry`, `publish_entry`, `unpublish_entry`, `write_field`, `str_replace_field`, `create_preview_token`, `verify_entry_password`, `verify_entry_credentials`, `provision`
 
 **Forms:** `list_forms`, `get_form`, `create_form`, `update_form`, `delete_form`, form field CRUD, submission list/get/mark-read/delete
 

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { hashPassword } from "../auth/password.js";
+import { hashPassword, verifyPassword } from "../auth/password.js";
 import { httpError } from "./httpError.js";
 
 /** Public/admin marker: password is set, raw hash never returned. */
@@ -37,4 +37,32 @@ export function hashPasswordFieldValue(value: unknown): Prisma.InputJsonValue {
     );
   }
   return hashPassword(value);
+}
+
+/**
+ * Extract the scrypt `salt:hash` string from an EntryFieldValue JSON cell.
+ * Returns null when unset / empty / not a hash string.
+ */
+export function storedPasswordHash(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const [salt, hash] = trimmed.split(":");
+  if (!salt || !hash) return null;
+  return trimmed;
+}
+
+/**
+ * Timing-safe check of plaintext against a stored password-field hash.
+ * Does not throw on mismatch — returns false. Throws only for missing hash.
+ */
+export function verifyStoredPasswordHash(
+  plaintext: string,
+  stored: unknown,
+): boolean {
+  const hash = storedPasswordHash(stored);
+  if (!hash) {
+    throw httpError(400, "Password is not set on this entry", "PASSWORD_NOT_SET");
+  }
+  return verifyPassword(plaintext, hash);
 }

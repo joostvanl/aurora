@@ -9,6 +9,8 @@ import {
   UpdateContentTypeSchema,
   UpdateEntrySchema,
   UpdateFieldDefinitionSchema,
+  VerifyEntryCredentialsSchema,
+  VerifyEntryPasswordSchema,
 } from "@cms/shared";
 import { EntryStatus, Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
@@ -65,6 +67,10 @@ import { registerMediaRoutes } from "../media/routes.js";
 import { registerProvisionRoutes } from "./provision.js";
 import { registerPackageRoutes } from "./package.js";
 import { registerFormRoutes } from "./forms.js";
+import {
+  verifyEntryCredentials,
+  verifyEntryPassword,
+} from "../lib/verifyEntryCredentials.js";
 
 const API_VERSION = "1";
 
@@ -599,6 +605,49 @@ export async function registerRoutes(app: FastifyInstance) {
           previewUrl: `${frontendBase}${previewPath}?previewToken=${encodeURIComponent(token)}`,
           apiUrl: `/api/v1/content-types/${ct.apiId}/entries/${entry.slug}?previewToken=${encodeURIComponent(token)}`,
         };
+      },
+    );
+
+    admin.post<{ Params: { apiId: string; entryId: string } }>(
+      "/api/v1/admin/content-types/:apiId/entries/:entryId/verify-password",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const entry = await prisma.entry.findFirst({
+          where: { id: request.params.entryId, contentTypeId: ct.id },
+          select: { id: true },
+        });
+        if (!entry) throw httpError(404, "Entry not found", "ENTRY_NOT_FOUND");
+
+        const body = VerifyEntryPasswordSchema.parse(request.body ?? {});
+        return verifyEntryPassword({
+          contentTypeId: ct.id,
+          entryId: entry.id,
+          password: body.password,
+          fieldApiId: body.fieldApiId,
+        });
+      },
+    );
+
+    admin.post<{ Params: { apiId: string } }>(
+      "/api/v1/admin/content-types/:apiId/verify-credentials",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const website = await getWebsiteLocales(websiteId);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const body = VerifyEntryCredentialsSchema.parse(request.body ?? {});
+        const locale = body.locale ?? website.defaultLocale;
+        assertLocaleOnWebsite(locale, website);
+
+        return verifyEntryCredentials({
+          contentTypeId: ct.id,
+          slug: body.slug,
+          locale,
+          username: body.username,
+          password: body.password,
+          usernameFieldApiId: body.usernameFieldApiId,
+          passwordFieldApiId: body.passwordFieldApiId,
+        });
       },
     );
 

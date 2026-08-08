@@ -229,6 +229,68 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
   );
 
   server.tool(
+    "verify_entry_password",
+    "Management-only: check a plaintext password against a hashed password field on an entry. Never returns the hash. Wrong password → 401.",
+    {
+      apiId: z.string().min(1),
+      entryId: z.string().min(1),
+      password: z.string().min(1),
+      fieldApiId: z.string().min(1).optional(),
+    },
+    async ({ apiId, entryId, password, fieldApiId }) => {
+      try {
+        return toolOk(
+          await client.verifyEntryPassword(apiId, entryId, {
+            password,
+            ...(fieldApiId ? { fieldApiId } : {}),
+          }),
+        );
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
+    "verify_entry_credentials",
+    "Management-only: look up an entry by slug and verify username + password fields (app login against CMS credentials).",
+    {
+      apiId: z.string().min(1),
+      slug: z.string().min(1),
+      username: z.string().min(1),
+      password: z.string().min(1),
+      locale: z.string().optional(),
+      usernameFieldApiId: z.string().min(1).optional(),
+      passwordFieldApiId: z.string().min(1).optional(),
+    },
+    async (args) => {
+      try {
+        const {
+          apiId,
+          slug,
+          username,
+          password,
+          locale,
+          usernameFieldApiId,
+          passwordFieldApiId,
+        } = args;
+        return toolOk(
+          await client.verifyEntryCredentials(apiId, {
+            slug,
+            username,
+            password,
+            ...(locale ? { locale } : {}),
+            ...(usernameFieldApiId ? { usernameFieldApiId } : {}),
+            ...(passwordFieldApiId ? { passwordFieldApiId } : {}),
+          }),
+        );
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
     "provision",
     "Idempotent upsert of content types, fields, and entries in one call.",
     {

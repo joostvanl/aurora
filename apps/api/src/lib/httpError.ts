@@ -17,7 +17,11 @@ export type ApiErrorCode =
   | "INTERNAL_ERROR"
   | "LOCALE_NOT_ENABLED"
   | "LOCALE_IN_USE"
-  | "TRANSLATION_EXISTS";
+  | "TRANSLATION_EXISTS"
+  | "PASSWORD_FIELD_NOT_FOUND"
+  | "PASSWORD_NOT_SET"
+  | "USERNAME_FIELD_NOT_FOUND"
+  | "INVALID_CREDENTIALS";
 
 export type ApiIssue = {
   path: Array<string | number>;

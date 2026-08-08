@@ -107,7 +107,7 @@ function fieldToJsonSchema(
     case "password":
       return {
         ...base,
-        description: `${base.description}; write-only plaintext, stored hashed; reads return { set: true } or null`,
+        description: `${base.description}; write-only plaintext, stored hashed; reads return { set: true } or null; verify via management POST …/verify-password`,
         oneOf: [
           { type: "string", description: "New password plaintext (write only)" },
           {

@@ -5,6 +5,8 @@ import {
   isPasswordLeaveUnchanged,
   PASSWORD_SET_MARKER,
   redactPasswordFieldValue,
+  storedPasswordHash,
+  verifyStoredPasswordHash,
 } from "./passwordFields.js";
 
 describe("passwordFields", () => {
@@ -34,5 +36,19 @@ describe("passwordFields", () => {
     expect(redactPasswordFieldValue(hash)).toEqual({ set: true });
     expect(redactPasswordFieldValue(null)).toBeNull();
     expect(redactPasswordFieldValue("")).toBeNull();
+  });
+
+  it("extracts stored scrypt hashes and verifies plaintext", () => {
+    const hash = hashPassword("hunter2-secret");
+    expect(storedPasswordHash(hash)).toBe(hash);
+    expect(storedPasswordHash(null)).toBeNull();
+    expect(storedPasswordHash("")).toBeNull();
+    expect(storedPasswordHash({ set: true })).toBeNull();
+    expect(verifyStoredPasswordHash("hunter2-secret", hash)).toBe(true);
+    expect(verifyStoredPasswordHash("wrong", hash)).toBe(false);
+  });
+
+  it("throws PASSWORD_NOT_SET when no hash is stored", () => {
+    expect(() => verifyStoredPasswordHash("any", null)).toThrow(/not set/i);
   });
 });
