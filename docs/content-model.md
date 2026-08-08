@@ -52,8 +52,14 @@ A content type is a named schema.
 | Type | Typical JSON value |
 |------|--------------------|
 | `text` | string |
-| `richtext` | string — **HTML** from the TipTap editor (`settings.contentFormat` = `html`) |
 | `textarea` | string — default `plain`; may be `markdown` (e.g. docs `body`) |
+| `richtext` | string — **HTML** from the TipTap editor (`settings.contentFormat` = `html`) |
+| `boolean` | boolean |
+| `datetime` | ISO-8601 string |
+| `number` | number |
+| `slug` | string — URL-safe; often mirrors top-level `entry.slug` |
+| `username` | string — account-style login name (plain text at rest) |
+| `password` | **write:** plaintext string to set/change; **read:** `{ "set": true }` or `null` (never the hash) |
 | `media` | `{ url, alt?, width?, height?, mimeType? }` (legacy URL string still accepted) |
 | `relation` | string — slug of one related entry (`settings.relatedContentTypeApiId`) |
 | `relations` | string[] — slugs of related entries (multi-select) |
@@ -67,9 +73,47 @@ Field definitions may include optional `settings` (JSON):
 }
 ```
 
-`contentFormat` is always present on **serialized** field defs (`html` | `markdown` | `plain`). Defaults: `richtext`→`html`, `text`/`textarea`→`plain`.
+`contentFormat` is always present on **serialized** field defs (`html` | `markdown` | `plain`). Defaults: `richtext`→`html`, `text` / `textarea` / `username` / `password`→`plain`.
 
 For `relation` / `relations`, `relatedContentTypeApiId` is required.
+
+### Username and password fields
+
+Use these when modeling a **user-like content type** (e.g. `apiId: "account"`) with credentials alongside other profile fields. They are **content field types**, not form field types — public forms still use `text` / `email` / … and must not collect reusable passwords.
+
+| Type | Storage | Admin UI | API read (admin + public) |
+|------|---------|----------|---------------------------|
+| `username` | Plain string (like `text`) | Text input (`autocomplete="username"`) | Same string |
+| `password` | One-way **hash** (`scrypt`, same helper as studio login) | Password input; never prefills the hash | `{ "set": true }` if a password exists, otherwise `null` |
+
+**Write behaviour for `password`:**
+
+- Send a non-empty string to set or rotate the password; the API stores only the hash.
+- Send `""`, omit the field, or send the read marker `{ "set": true }` to **leave the existing hash unchanged**.
+- Empty-on-save does **not** clear the password.
+
+**Read behaviour for `password`:**
+
+- The raw hash is **never** returned on admin or public entry JSON.
+- Clients should treat `{ "set": true }` as “password is configured” and show an empty password input when editing.
+- Public published entries also redact password fields — never expose hashes to frontends.
+
+**Example entry shape (read):**
+
+```json
+{
+  "slug": "alice",
+  "contentType": "account",
+  "status": "published",
+  "fields": {
+    "username": "alice",
+    "password": { "set": true },
+    "displayName": "Alice"
+  }
+}
+```
+
+**Out of scope of these field types alone:** end-user login/session against content entries, username uniqueness, or invite flows. Hashing + redaction only make it safe to *store* credentials on entries.
 
 ## Entry
 

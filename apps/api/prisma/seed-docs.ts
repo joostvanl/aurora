@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EntryStatus, FieldType, PrismaClient } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import { EntryStatus, FieldType, Prisma, PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
