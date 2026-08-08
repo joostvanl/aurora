@@ -1,5 +1,30 @@
 # Errors and gotchas
 
+## Error shape and request IDs
+
+API errors from the global handler look like:
+
+```json
+{
+  "message": "Entry not found",
+  "code": "ENTRY_NOT_FOUND",
+  "requestId": "a1b2c3d4-…"
+}
+```
+
+Every response also includes header `X-Request-Id` (same value). Clients may send `x-request-id` or `x-correlation-id` to reuse an id across services.
+
+To correlate a client error with production logs on the Pi:
+
+```bash
+cd ~/aurora/deploy
+docker compose logs -f api | grep '<requestId>'
+```
+
+Production API logs are structured JSON (`LOG_LEVEL`, default `info`). There is no central log stack (Loki/Datadog) yet — see [deploy-raspberry-pi.md](./deploy-raspberry-pi.md).
+
+The typed client exposes `CmsApiError.requestId` when the header or JSON body includes it.
+
 ## Common failures
 
 | Symptom | Likely cause |

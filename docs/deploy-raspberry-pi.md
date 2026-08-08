@@ -68,6 +68,17 @@ From [`deploy/docker-compose.yml`](../deploy/docker-compose.yml):
 
 `NEXT_PUBLIC_*` values are **build args**. After changing them in `deploy/.env`, trigger a rebuild (push to `main` or `workflow_dispatch`).
 
+## Logs and observability
+
+API logs are structured JSON (Pino). Set `LOG_LEVEL=info` (or `debug` / `warn`) in `deploy/.env`. Each request has an `X-Request-Id` (also on error JSON as `requestId`) — grep Docker logs with that id:
+
+```bash
+cd ~/aurora/deploy
+docker compose logs -f api | grep '<requestId>'
+```
+
+There is **no** central log aggregation (Loki/Datadog/Sentry) on the Pi yet; `docker compose logs` is the operator surface.
+
 ## Manual deploy
 
 ```bash

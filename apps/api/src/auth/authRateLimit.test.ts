@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../app.js";
+import { prisma } from "../db.js";
 import { clearDefaultRateLimitStore } from "../lib/rateLimit.js";
 
 describe("auth rate limits", () => {
@@ -7,6 +8,12 @@ describe("auth rate limits", () => {
 
   beforeEach(() => {
     clearDefaultRateLimitStore();
+    // Avoid needing a live database for failed-login attempts.
+    vi.spyOn(prisma.user, "findUnique").mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   afterAll(async () => {

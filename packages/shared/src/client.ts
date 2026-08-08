@@ -122,14 +122,36 @@ export type PackageImportResult = {
 };
 
 export class CmsApiError extends Error {
+  /** Correlates with API `X-Request-Id` / error JSON `requestId` when present. */
+  public requestId?: string;
+
   constructor(
     message: string,
     public status: number,
     public body?: unknown,
+    requestId?: string,
   ) {
     super(message);
     this.name = "CmsApiError";
+    this.requestId = requestId;
   }
+}
+
+function requestIdFromResponse(
+  res: Response,
+  body: unknown,
+): string | undefined {
+  const headerId = res.headers.get("x-request-id")?.trim();
+  if (headerId) return headerId;
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "requestId" in body &&
+    typeof (body as { requestId: unknown }).requestId === "string"
+  ) {
+    return (body as { requestId: string }).requestId;
+  }
+  return undefined;
 }
 
 export class CmsClient {
@@ -212,7 +234,12 @@ export class CmsClient {
         typeof (body as { message: unknown }).message === "string"
           ? (body as { message: string }).message
           : `Request failed with status ${res.status}`;
-      throw new CmsApiError(message, res.status, body);
+      throw new CmsApiError(
+        message,
+        res.status,
+        body,
+        requestIdFromResponse(res, body),
+      );
     }
 
     return body as T;
@@ -829,7 +856,12 @@ export class CmsClient {
         typeof (body as { message: unknown }).message === "string"
           ? (body as { message: string }).message
           : res.statusText || "Request failed";
-      throw new CmsApiError(message, res.status, body);
+      throw new CmsApiError(
+        message,
+        res.status,
+        body,
+        requestIdFromResponse(res, body),
+      );
     }
     return body as MediaUploadResult;
   }
@@ -912,7 +944,12 @@ export class CmsClient {
         typeof (body as { message: unknown }).message === "string"
           ? (body as { message: string }).message
           : res.statusText || "Export failed";
-      throw new CmsApiError(message, res.status, body);
+      throw new CmsApiError(
+        message,
+        res.status,
+        body,
+        requestIdFromResponse(res, body),
+      );
     }
 
     const disposition = res.headers.get("Content-Disposition") ?? "";
@@ -968,7 +1005,12 @@ export class CmsClient {
         typeof (body as { message: unknown }).message === "string"
           ? (body as { message: string }).message
           : res.statusText || "Import failed";
-      throw new CmsApiError(message, res.status, body);
+      throw new CmsApiError(
+        message,
+        res.status,
+        body,
+        requestIdFromResponse(res, body),
+      );
     }
     return body as PackageImportResult;
   }

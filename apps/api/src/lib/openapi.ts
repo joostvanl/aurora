@@ -179,6 +179,11 @@ export function publicOpenApiDocument(baseUrl: string) {
           properties: {
             message: { type: "string" },
             code: { type: "string" },
+            requestId: {
+              type: "string",
+              description:
+                "Same value as response header X-Request-Id; use to correlate with API Docker logs",
+            },
             issues: {
               type: "array",
               items: {
