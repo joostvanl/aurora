@@ -18,6 +18,7 @@ export type SerializedScheduledTask = {
   prompt: string;
   macroId: string | null;
   enabled: boolean;
+  allowPublish: boolean;
   frequency: ScheduledTask["frequency"];
   timeOfDay: string;
   timeZone: string;
@@ -61,6 +62,7 @@ export function serializeScheduledTask(
     prompt: task.prompt,
     macroId: task.macroId,
     enabled: task.enabled,
+    allowPublish: task.allowPublish,
     frequency: task.frequency,
     timeOfDay: task.timeOfDay,
     timeZone: task.timeZone,

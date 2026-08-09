@@ -253,6 +253,8 @@ model ScheduledTask {
   /// Soft link to ai.macros[].id; optional after prompt is denormalized.
   macroId         String?
   enabled         Boolean                 @default(true)
+  /// When true, scheduled agent runs may publish entries (admin opt-in).
+  allowPublish    Boolean                 @default(false)
   frequency       ScheduledTaskFrequency
   /// Local wall-clock time "HH:mm" in `timeZone`.
   timeOfDay       String

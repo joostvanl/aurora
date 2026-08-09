@@ -745,9 +745,12 @@ export const aiTools: ChatTool[] = [
   },
 ];
 
-/** Tool list for chatCompletion; scheduled runs hide publish/unpublish. */
-export function aiToolsForSource(source?: string): ChatTool[] {
-  if (source === "scheduled_task") {
+/** Tool list for chatCompletion; scheduled runs hide publish unless allowPublish. */
+export function aiToolsForSource(
+  source?: string,
+  opts?: { allowPublish?: boolean },
+): ChatTool[] {
+  if (source === "scheduled_task" && !opts?.allowPublish) {
     return aiTools.filter(
       (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
     );
@@ -765,6 +768,8 @@ export async function executeAiTool(
     userId?: string;
     /** Metering / policy source, e.g. "chat" | "scheduled_task". */
     source?: string;
+    /** Scheduled-task opt-in: allow publish/unpublish tools. */
+    allowPublish?: boolean;
     /** Explicit user approval required before content-type / field mutations. */
     schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
@@ -772,7 +777,7 @@ export async function executeAiTool(
 ): Promise<ToolResult> {
   const { websiteId, role } = ctx;
   const createdByUserId = asCreatedByUserId(ctx.userId);
-  const draftOnly = ctx.source === "scheduled_task";
+  const draftOnly = ctx.source === "scheduled_task" && !ctx.allowPublish;
   const ensureSnapshot = async (entryId: string | undefined) => {
     if (entryId && ctx.ensureAiSnapshot) {
       await ctx.ensureAiSnapshot(entryId);

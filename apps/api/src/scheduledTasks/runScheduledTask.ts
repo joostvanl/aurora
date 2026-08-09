@@ -113,6 +113,7 @@ export async function runScheduledTask(input: {
         userId,
         role: "admin",
         source: "scheduled_task",
+        allowPublish: task.allowPublish,
         context: {
           mode: "general",
           websiteName: website?.name,

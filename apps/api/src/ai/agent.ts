@@ -137,6 +137,8 @@ export async function runAiChat(input: {
   context?: AiChatContext;
   /** AiUsageEvent.source; also drives draft-only tool policy for scheduled_task. */
   source?: string;
+  /** When source is scheduled_task, opt-in to allow publish tools. */
+  allowPublish?: boolean;
 }): Promise<AiChatResponse> {
   // Entry write/optimize/macro: deterministic JSON-patch path (works without tool-calling support).
   if (
@@ -156,6 +158,7 @@ export async function runAiChat(input: {
   }
 
   const source = input.source ?? "chat";
+  const allowPublish = Boolean(input.allowPublish);
   const config = await resolveAiConfig(input.websiteId);
   if (!config.enabled || !config.apiKey || !config.baseUrl || !config.model) {
     throw Object.assign(
@@ -177,7 +180,12 @@ export async function runAiChat(input: {
     config.instructions,
   );
   if (source === "scheduled_task") {
-    system += `
+    system += allowPublish
+      ? `
+
+## Scheduled task (unattended)
+You are running as a scheduled task without a human in the loop. This task is configured to allow publishing — you may publish or unpublish when the prompt requires it. Prefer concrete tool actions that fulfill the task prompt.`
+      : `
 
 ## Scheduled task (unattended)
 You are running as a scheduled task without a human in the loop. Create or edit entries as drafts only — do not publish. Prefer concrete tool actions that fulfill the task prompt.`;
@@ -197,7 +205,7 @@ You are running as a scheduled task without a human in the loop. Create or edit 
 
   const toolCalls: AiToolCallResult[] = [];
   let model = config.model;
-  const tools = aiToolsForSource(source);
+  const tools = aiToolsForSource(source, { allowPublish });
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const completion = await chatCompletion({
@@ -234,6 +242,7 @@ You are running as a scheduled task without a human in the loop. Create or edit 
         role: input.role,
         userId: input.userId,
         source,
+        allowPublish,
         schemaChangeConfirmed,
         ensureAiSnapshot: async (entryId, label) => {
           const version = await ensureAiSnapshot(entryId, label);

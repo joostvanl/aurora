@@ -242,6 +242,7 @@ Outlook-like **scheduled AI agent runs** for a website. Studio: **Settings → T
 | `byMonthDay` | Required for monthly: `1`–`31` (clamped to month length) |
 | `startAt` / `endAt` | ISO datetimes; `endAt` optional — no further fires after it |
 | `enabled` | Default `true` |
+| `allowPublish` | Default `false`. When `true` (admin opt-in), the agent may publish/unpublish during the run |
 
 **Runtime**
 
@@ -249,7 +250,7 @@ Outlook-like **scheduled AI agent runs** for a website. Studio: **Settings → T
 - Soft timeout: `CMS_SCHEDULED_TASK_TIMEOUT_MS` (default `180000`).
 - Max **one concurrent run per website**; optimistic claim on `nextRunAt`.
 - AI usage metered with source `scheduled_task`.
-- **Draft-only v1:** `publish_entry` / `unpublish_entry` are omitted and blocked; create/meta cannot leave entries published from a scheduled run.
+- **Draft-only by default:** `publish_entry` / `unpublish_entry` are omitted and blocked unless `allowPublish` is true; create/meta still forced to draft when publish is not allowed.
 - After a run: `once` or exhausted schedule → `enabled: false`, `nextRunAt: null`; otherwise `nextRunAt` advances.
 - Inspect failures via `lastStatus` / `lastError` on the task and `ScheduledTaskRun` rows (`summary`, `reply`).
 

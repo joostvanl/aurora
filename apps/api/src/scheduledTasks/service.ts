@@ -119,6 +119,7 @@ export async function createScheduledTask(input: {
   prompt?: string;
   macroId?: string;
   enabled: boolean;
+  allowPublish?: boolean;
   frequency: ScheduledTaskFrequency;
   timeOfDay: string;
   timeZone: string;
@@ -151,6 +152,7 @@ export async function createScheduledTask(input: {
       prompt,
       macroId,
       enabled: input.enabled,
+      allowPublish: input.allowPublish ?? false,
       frequency: fields.frequency,
       timeOfDay: fields.timeOfDay,
       timeZone: fields.timeZone,

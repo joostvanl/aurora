@@ -76,6 +76,7 @@ export async function registerScheduledTaskRoutes(app: FastifyInstance) {
           prompt: body.prompt,
           macroId: body.macroId,
           enabled: body.enabled,
+          allowPublish: body.allowPublish,
           frequency: body.frequency,
           timeOfDay: body.timeOfDay,
           timeZone: body.timeZone,
@@ -129,6 +130,9 @@ export async function registerScheduledTaskRoutes(app: FastifyInstance) {
             prompt,
             macroId,
             enabled,
+            ...(body.allowPublish !== undefined
+              ? { allowPublish: body.allowPublish }
+              : {}),
             frequency: fields.frequency,
             timeOfDay: fields.timeOfDay,
             timeZone: fields.timeZone,

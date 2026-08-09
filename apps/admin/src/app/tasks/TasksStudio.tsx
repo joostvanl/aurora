@@ -31,6 +31,7 @@ type FormState = {
   prompt: string;
   macroId: string;
   enabled: boolean;
+  allowPublish: boolean;
   frequency: ScheduledTaskFrequency;
   timeOfDay: string;
   timeZone: string;
@@ -54,6 +55,7 @@ function emptyForm(): FormState {
     prompt: "",
     macroId: "",
     enabled: true,
+    allowPublish: false,
     frequency: "daily",
     timeOfDay: "09:00",
     timeZone: "Europe/Amsterdam",
@@ -88,6 +90,7 @@ function formFromTask(task: ScheduledTask): FormState {
     prompt: task.prompt,
     macroId: task.macroId ?? "",
     enabled: task.enabled,
+    allowPublish: task.allowPublish,
     frequency: task.frequency,
     timeOfDay: task.timeOfDay,
     timeZone: task.timeZone,
@@ -127,6 +130,7 @@ function buildPayload(form: FormState): CreateScheduledTaskInput {
   const payload: CreateScheduledTaskInput = {
     name: form.name.trim(),
     enabled: form.enabled,
+    allowPublish: form.allowPublish,
     frequency: form.frequency,
     timeOfDay: form.timeOfDay,
     timeZone: form.timeZone.trim() || "Europe/Amsterdam",
@@ -619,6 +623,41 @@ export function TasksStudio() {
               />
               Actief
             </label>
+          </div>
+
+          <div className="field">
+            <label
+              htmlFor="task-allow-publish"
+              style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
+            >
+              <input
+                id="task-allow-publish"
+                type="checkbox"
+                checked={form.allowPublish}
+                disabled={!isAdmin}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, allowPublish: e.target.checked }))
+                }
+              />
+              Automatisch publiceren
+            </label>
+            {form.allowPublish ? (
+              <p
+                style={{
+                  color: "var(--danger)",
+                  margin: "0.5rem 0 0",
+                  fontSize: "0.9rem",
+                }}
+              >
+                Let op: bij een geplande run kan de AI-agent content direct
+                publiceren zonder menselijke controle. Gebruik dit alleen als
+                dat bewust gewenst is.
+              </p>
+            ) : (
+              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                Standaard blijven wijzigingen concept (draft).
+              </p>
+            )}
           </div>
 
           {isAdmin && (

@@ -17,7 +17,16 @@ describe("CreateScheduledTaskSchema", () => {
   it("accepts a weekly task with prompt", () => {
     const parsed = CreateScheduledTaskSchema.parse(base);
     expect(parsed.enabled).toBe(true);
+    expect(parsed.allowPublish).toBe(false);
     expect(parsed.timeZone).toBe("Europe/Amsterdam");
+  });
+
+  it("accepts allowPublish true", () => {
+    const parsed = CreateScheduledTaskSchema.parse({
+      ...base,
+      allowPublish: true,
+    });
+    expect(parsed.allowPublish).toBe(true);
   });
 
   it("rejects weekly without byWeekday", () => {

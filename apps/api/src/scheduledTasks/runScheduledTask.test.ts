@@ -41,6 +41,7 @@ function baseTask(overrides: Record<string, unknown> = {}) {
     prompt: "Create a draft news item",
     macroId: null,
     enabled: true,
+    allowPublish: false,
     frequency: "daily",
     timeOfDay: "08:00",
     timeZone: "Europe/Amsterdam",
@@ -103,6 +104,7 @@ describe("runScheduledTask", () => {
         userId: "user1",
         role: "admin",
         source: "scheduled_task",
+        allowPublish: false,
         context: expect.objectContaining({ mode: "general" }),
       }),
     );
@@ -143,6 +145,28 @@ describe("runScheduledTask", () => {
     expect(task.lastStatus).toBe("error");
     expect(task.lastError).toMatch(/AI not configured/);
     expect(task.nextRunAt).toBeInstanceOf(Date);
+  });
+
+  it("passes allowPublish true to the agent when enabled on the task", async () => {
+    findFirst.mockResolvedValue(baseTask({ allowPublish: true }));
+    const chat = vi.fn().mockResolvedValue({
+      reply: "Published",
+      toolCalls: [],
+      model: "test",
+    });
+
+    await runScheduledTask({
+      websiteId: "ws1",
+      taskId: "task1",
+      runAiChat: chat,
+    });
+
+    expect(chat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "scheduled_task",
+        allowPublish: true,
+      }),
+    );
   });
 
   it("resolves actor from website admin when createdBy is null", async () => {
