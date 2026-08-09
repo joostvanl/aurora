@@ -55,6 +55,14 @@ enum LocalizationMode {
   all_locales
 }
 
+/// Outlook-like cadence for ScheduledTask (CMS-20).
+enum ScheduledTaskFrequency {
+  once
+  daily
+  weekly
+  monthly
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -90,6 +98,7 @@ model Website {
   apiTokens    ApiToken[]
   aiUsageEvents AiUsageEvent[]
   contentRequestEvents ContentRequestEvent[]
+  scheduledTasks ScheduledTask[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -231,6 +240,55 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@unique([websiteId, key])
+}
+
+/// Unattended AI agent task (Settings → Taken). Prompt is denormalized from dock macros.
+model ScheduledTask {
+  id              String                  @id @default(cuid())
+  websiteId       String
+  website         Website                 @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  name            String
+  /// Prompt executed by the AI agent (copied from macro at save when macroId set).
+  prompt          String
+  /// Soft link to ai.macros[].id; optional after prompt is denormalized.
+  macroId         String?
+  enabled         Boolean                 @default(true)
+  frequency       ScheduledTaskFrequency
+  /// Local wall-clock time "HH:mm" in `timeZone`.
+  timeOfDay       String
+  /// IANA timezone, e.g. "Europe/Amsterdam".
+  timeZone        String                  @default("Europe/Amsterdam")
+  /// weekly: 0=Sunday … 6=Saturday (JS getDay).
+  byWeekday       Int?
+  /// monthly: day of month 1–31 (clamped to month length).
+  byMonthDay      Int?
+  startAt         DateTime
+  endAt           DateTime?
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  lastStatus      String?
+  lastError       String?
+  createdByUserId String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  runs            ScheduledTaskRun[]
+
+  @@index([enabled, nextRunAt])
+  @@index([websiteId])
+}
+
+model ScheduledTaskRun {
+  id         String        @id @default(cuid())
+  taskId     String
+  task       ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedAt  DateTime      @default(now())
+  finishedAt DateTime?
+  ok         Boolean       @default(false)
+  summary    String?
+  reply      String?
+  createdAt  DateTime      @default(now())
+
+  @@index([taskId, startedAt])
 }
 
 /** One LLM chat-completion call’s token usage for metering. */
