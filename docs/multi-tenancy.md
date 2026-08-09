@@ -4,7 +4,7 @@
 
 A **website** is the tenant:
 
-- Own content types, entries, forms, settings, AI config, API tokens
+- Own content types, entries, forms, settings, AI config, scheduled tasks, API tokens
 - Own public **`siteKey`**
 - Multiple **users** via **memberships**, each with a role
 
@@ -13,8 +13,8 @@ A **website** is the tenant:
 | Role | Access |
 |------|--------|
 | **editor** | Entries, publish/versions, form submission inbox, AI dock chat (if configured) |
-| **builder** | Everything editor can do, plus content types, form schemas, API tokens, provision |
-| **admin** | Everything, including members, website properties, and AI provider config |
+| **builder** | Everything editor can do, plus content types, form schemas, API tokens, provision; **read** scheduled tasks |
+| **admin** | Everything, including members, website properties, AI provider config, and scheduled task CRUD / run-now |
 
 Any logged-in user can also **create additional websites** (they become admin of the new site).
 

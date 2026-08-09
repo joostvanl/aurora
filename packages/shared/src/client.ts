@@ -22,6 +22,12 @@ import type {
   VerifyEntryPasswordInput,
 } from "./schemas.js";
 import type {
+  CreateScheduledTaskInput,
+  ScheduledTask,
+  ScheduledTaskRun,
+  UpdateScheduledTaskInput,
+} from "./scheduledTasks.js";
+import type {
   AiChatRequest,
   AiChatResponse,
   AiConfigUpdate,
@@ -1139,6 +1145,56 @@ export class CmsClient {
     return this.request<{ ok: true }>(
       `/api/v1/admin/forms/${formApiId}/submissions/${submissionId}`,
       { method: "DELETE" },
+      { auth: true },
+    );
+  }
+
+  // --- Scheduled tasks (management) ---
+
+  listScheduledTasks() {
+    return this.request<{ items: ScheduledTask[] }>(
+      "/api/v1/admin/scheduled-tasks",
+      {},
+      { auth: true },
+    );
+  }
+
+  getScheduledTask(id: string) {
+    return this.request<ScheduledTask>(
+      `/api/v1/admin/scheduled-tasks/${id}`,
+      {},
+      { auth: true },
+    );
+  }
+
+  createScheduledTask(input: CreateScheduledTaskInput) {
+    return this.request<ScheduledTask>(
+      "/api/v1/admin/scheduled-tasks",
+      { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  updateScheduledTask(id: string, input: UpdateScheduledTaskInput) {
+    return this.request<ScheduledTask>(
+      `/api/v1/admin/scheduled-tasks/${id}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  deleteScheduledTask(id: string) {
+    return this.request<{ ok: true }>(
+      `/api/v1/admin/scheduled-tasks/${id}`,
+      { method: "DELETE" },
+      { auth: true },
+    );
+  }
+
+  runScheduledTaskNow(id: string) {
+    return this.request<{ task: ScheduledTask; run: ScheduledTaskRun }>(
+      `/api/v1/admin/scheduled-tasks/${id}/run-now`,
+      { method: "POST" },
       { auth: true },
     );
   }

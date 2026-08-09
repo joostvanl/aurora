@@ -115,6 +115,7 @@ function deriveFromPathname(pathname: string): AiScreenHints {
   if (pathname === "/website") return { page: "Website settings" };
   if (pathname === "/members") return { page: "Members" };
   if (pathname === "/ai") return { page: "AI settings" };
+  if (pathname === "/tasks") return { page: "Taken" };
   if (pathname === "/select-website") return { page: "Websites" };
   return { page: pathname };
 }

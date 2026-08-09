@@ -45,6 +45,13 @@ export function SettingsHub() {
       visible: showAi,
     },
     {
+      href: "/tasks",
+      title: "Taken",
+      description:
+        "Geplande AI-taken: prompt of macro, herhaling, tijdstip en laatste status.",
+      visible: showAi,
+    },
+    {
       href: "/media",
       title: "Media storage",
       description:

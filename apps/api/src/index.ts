@@ -15,6 +15,15 @@ async function main() {
   const app = await buildApp();
   await app.listen({ port, host });
   app.log.info(`CMS API listening on http://${host}:${port}`);
+
+  if (process.env.CMS_SCHEDULED_TASKS !== "0") {
+    const { startScheduledTaskPoller } = await import(
+      "./scheduledTasks/poller.js"
+    );
+    startScheduledTaskPoller(app.log);
+  } else {
+    app.log.info("scheduled task poller disabled (CMS_SCHEDULED_TASKS=0)");
+  }
 }
 
 main().catch((err) => {

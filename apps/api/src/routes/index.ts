@@ -67,6 +67,7 @@ import { registerMediaRoutes } from "../media/routes.js";
 import { registerProvisionRoutes } from "./provision.js";
 import { registerPackageRoutes } from "./package.js";
 import { registerFormRoutes } from "./forms.js";
+import { registerScheduledTaskRoutes } from "../scheduledTasks/routes.js";
 import {
   verifyEntryCredentials,
   verifyEntryPassword,
@@ -168,6 +169,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await registerProvisionRoutes(app);
   await registerPackageRoutes(app);
   await registerFormRoutes(app);
+  await registerScheduledTaskRoutes(app);
 
   // --- Public (site key) ---
   app.register(async (publicApi) => {

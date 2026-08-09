@@ -216,6 +216,45 @@ Password verify endpoints are **management-only** (not available with `x-site-ke
 | `.../versions/:versionId/restore` | Restore |
 | `/api/v1/admin/ai/*` | Per-account AI operator |
 
+### Scheduled tasks (Taken)
+
+Outlook-like **scheduled AI agent runs** for a website. Studio: **Settings → Taken** (`/tasks`). Runs use the full agent tool loop (`mode: general`), not entry `mode: "macro"`.
+
+| Method | Path | Roles | Notes |
+|--------|------|-------|-------|
+| GET | `/api/v1/admin/scheduled-tasks` | builder+ | List tasks (+ up to 5 recent runs each) |
+| GET | `/api/v1/admin/scheduled-tasks/:id` | builder+ | Detail |
+| POST | `/api/v1/admin/scheduled-tasks` | admin | Create; computes initial `nextRunAt` |
+| PATCH | `/api/v1/admin/scheduled-tasks/:id` | admin | Update schedule / prompt / enabled |
+| DELETE | `/api/v1/admin/scheduled-tasks/:id` | admin | Delete |
+| POST | `/api/v1/admin/scheduled-tasks/:id/run-now` | admin | Execute immediately via same runner |
+
+**Create body (essentials):**
+
+| Field | Notes |
+|-------|--------|
+| `name` | Display label |
+| `prompt` and/or `macroId` | If `macroId` set, prompt is copied from `ai.macros` when omitted |
+| `frequency` | `once` \| `daily` \| `weekly` \| `monthly` |
+| `timeOfDay` | Local `HH:mm` in `timeZone` |
+| `timeZone` | IANA, default `Europe/Amsterdam` |
+| `byWeekday` | Required for weekly: `0`=Sunday … `6`=Saturday |
+| `byMonthDay` | Required for monthly: `1`–`31` (clamped to month length) |
+| `startAt` / `endAt` | ISO datetimes; `endAt` optional — no further fires after it |
+| `enabled` | Default `true` |
+
+**Runtime**
+
+- In-process API poller (~45s) after listen. Disable with `CMS_SCHEDULED_TASKS=0`.
+- Soft timeout: `CMS_SCHEDULED_TASK_TIMEOUT_MS` (default `180000`).
+- Max **one concurrent run per website**; optimistic claim on `nextRunAt`.
+- AI usage metered with source `scheduled_task`.
+- **Draft-only v1:** `publish_entry` / `unpublish_entry` are omitted and blocked; create/meta cannot leave entries published from a scheduled run.
+- After a run: `once` or exhausted schedule → `enabled: false`, `nextRunAt: null`; otherwise `nextRunAt` advances.
+- Inspect failures via `lastStatus` / `lastError` on the task and `ScheduledTaskRun` rows (`summary`, `reply`).
+
+`CmsClient`: `listScheduledTasks`, `getScheduledTask`, `createScheduledTask`, `updateScheduledTask`, `deleteScheduledTask`, `runScheduledTaskNow`.
+
 ---
 
 ## Content packages (export / import)

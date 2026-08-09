@@ -56,6 +56,12 @@ export const CONTENT_SCHEMA_TOOLS = new Set([
   "delete_field",
 ]);
 
+/** Tools omitted / blocked for unattended scheduled-task runs (draft-only v1). */
+export const SCHEDULED_TASK_BLOCKED_TOOLS = new Set([
+  "publish_entry",
+  "unpublish_entry",
+]);
+
 export type ToolResult = {
   name: string;
   ok: boolean;
@@ -739,6 +745,16 @@ export const aiTools: ChatTool[] = [
   },
 ];
 
+/** Tool list for chatCompletion; scheduled runs hide publish/unpublish. */
+export function aiToolsForSource(source?: string): ChatTool[] {
+  if (source === "scheduled_task") {
+    return aiTools.filter(
+      (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
+    );
+  }
+  return aiTools;
+}
+
 export async function executeAiTool(
   name: string,
   rawArgs: unknown,
@@ -747,6 +763,8 @@ export async function executeAiTool(
     role: WebsiteRole;
     /** Acting user (for entry createdBy). */
     userId?: string;
+    /** Metering / policy source, e.g. "chat" | "scheduled_task". */
+    source?: string;
     /** Explicit user approval required before content-type / field mutations. */
     schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
@@ -754,11 +772,21 @@ export async function executeAiTool(
 ): Promise<ToolResult> {
   const { websiteId, role } = ctx;
   const createdByUserId = asCreatedByUserId(ctx.userId);
+  const draftOnly = ctx.source === "scheduled_task";
   const ensureSnapshot = async (entryId: string | undefined) => {
     if (entryId && ctx.ensureAiSnapshot) {
       await ctx.ensureAiSnapshot(entryId);
     }
   };
+
+  if (draftOnly && SCHEDULED_TASK_BLOCKED_TOOLS.has(name)) {
+    return {
+      name,
+      ok: false,
+      summary:
+        "Blocked: scheduled tasks are draft-only and cannot publish or unpublish entries.",
+    };
+  }
 
   if (SCHEMA_TOOLS.has(name) && !roleAtLeast(role, RolePermission.schema)) {
     return {
@@ -1022,8 +1050,11 @@ export async function executeAiTool(
         const website = await getWebsiteLocales(websiteId);
         const locale = str(rawArgs, "locale") ?? website.defaultLocale;
         assertLocaleOnWebsite(locale, website);
-        const status =
+        let status =
           (str(rawArgs, "status") as EntryStatus | undefined) ?? EntryStatus.draft;
+        if (draftOnly && status === EntryStatus.published) {
+          status = EntryStatus.draft;
+        }
         const fields = asRecord(asRecord(rawArgs).fields);
 
         const existing = await prisma.entry.findUnique({
@@ -1191,7 +1222,10 @@ export async function executeAiTool(
           where: { id: entryId, contentTypeId: ct.id },
         });
         if (!existing) throw new Error("Entry not found");
-        const status = str(rawArgs, "status") as EntryStatus | undefined;
+        let status = str(rawArgs, "status") as EntryStatus | undefined;
+        if (draftOnly && status === EntryStatus.published) {
+          status = EntryStatus.draft;
+        }
         const slug = str(rawArgs, "slug");
         const full = await prisma.entry.update({
           where: { id: existing.id },

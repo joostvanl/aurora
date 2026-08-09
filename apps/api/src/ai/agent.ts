@@ -11,7 +11,11 @@ import { createAiSnapshotGuard } from "../lib/versions.js";
 import { resolveAiConfig } from "./config.js";
 import { runEntryContentEdit } from "./entryEdit.js";
 import { chatCompletion, type ChatMessage } from "./openai.js";
-import { aiTools, executeAiTool } from "./tools.js";
+import {
+  aiToolsForSource,
+  CONTENT_SCHEMA_TOOLS,
+  executeAiTool,
+} from "./tools.js";
 import {
   buildFrontendAgentBrief,
   FRONTEND_BRIEF_HEADING,
@@ -21,7 +25,6 @@ import {
 } from "./frontendBrief.js";
 import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
 import { buildWebsiteKnowledge } from "./websiteContext.js";
-import { CONTENT_SCHEMA_TOOLS } from "./tools.js";
 
 const MAX_STEPS = 16;
 
@@ -132,6 +135,8 @@ export async function runAiChat(input: {
   role: "editor" | "builder" | "admin";
   history?: AiChatMessage[];
   context?: AiChatContext;
+  /** AiUsageEvent.source; also drives draft-only tool policy for scheduled_task. */
+  source?: string;
 }): Promise<AiChatResponse> {
   // Entry write/optimize/macro: deterministic JSON-patch path (works without tool-calling support).
   if (
@@ -150,6 +155,7 @@ export async function runAiChat(input: {
     });
   }
 
+  const source = input.source ?? "chat";
   const config = await resolveAiConfig(input.websiteId);
   if (!config.enabled || !config.apiKey || !config.baseUrl || !config.model) {
     throw Object.assign(
@@ -164,15 +170,23 @@ export async function runAiChat(input: {
   let versionCreated: AiChatResponse["versionCreated"] = null;
   const schemaChangeConfirmed = userConfirmedSchemaChange(input.message);
 
+  let system = await buildSystemPrompt(
+    input.role,
+    input.websiteId,
+    input.context,
+    config.instructions,
+  );
+  if (source === "scheduled_task") {
+    system += `
+
+## Scheduled task (unattended)
+You are running as a scheduled task without a human in the loop. Create or edit entries as drafts only — do not publish. Prefer concrete tool actions that fulfill the task prompt.`;
+  }
+
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: await buildSystemPrompt(
-        input.role,
-        input.websiteId,
-        input.context,
-        config.instructions,
-      ),
+      content: system,
     },
     ...(input.history ?? [])
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -183,17 +197,18 @@ export async function runAiChat(input: {
 
   const toolCalls: AiToolCallResult[] = [];
   let model = config.model;
+  const tools = aiToolsForSource(source);
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const completion = await chatCompletion({
       config,
       messages,
-      tools: aiTools,
+      tools,
       toolChoice: "auto",
       meter: {
         websiteId: input.websiteId,
         userId: input.userId,
-        source: "chat",
+        source,
       },
     });
     model = completion.model;
@@ -218,6 +233,7 @@ export async function runAiChat(input: {
         websiteId: input.websiteId,
         role: input.role,
         userId: input.userId,
+        source,
         schemaChangeConfirmed,
         ensureAiSnapshot: async (entryId, label) => {
           const version = await ensureAiSnapshot(entryId, label);

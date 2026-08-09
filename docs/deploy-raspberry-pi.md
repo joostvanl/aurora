@@ -77,6 +77,8 @@ cd ~/aurora/deploy
 docker compose logs -f api | grep '<requestId>'
 ```
 
+Scheduled AI tasks (Settings → Taken) run inside the API process. Keep `CMS_SCHEDULED_TASKS=1` (default) or set `CMS_SCHEDULED_TASKS=0` to disable the poller. Grep for `scheduled task` in API logs when diagnosing runs.
+
 There is **no** central log aggregation (Loki/Datadog/Sentry) on the Pi yet; `docker compose logs` is the operator surface.
 
 ## Manual deploy
