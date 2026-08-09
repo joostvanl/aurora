@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAdminClient } from "@/lib/cms";
+import { DeleteContentTypeButton } from "@/components/DeleteContentTypeButton";
 import { FieldManager } from "@/components/FieldManager";
 import { LocalizationModeEditor } from "@/components/LocalizationModeEditor";
 
@@ -10,9 +11,19 @@ export default async function ContentTypeDetailPage({
   params: Promise<{ apiId: string }>;
 }) {
   const { apiId } = await params;
+  const client = await getAdminClient();
+  try {
+    const me = await client.me();
+    if (me.user.role === "editor") {
+      redirect("/");
+    }
+  } catch {
+    redirect("/login");
+  }
+
   let type;
   try {
-    type = await (await getAdminClient()).getContentType(apiId);
+    type = await client.getContentType(apiId);
   } catch {
     notFound();
   }
@@ -36,6 +47,7 @@ export default async function ContentTypeDetailPage({
           <Link className="btn" href={`/entries/${type.apiId}`}>
             View entries
           </Link>
+          <DeleteContentTypeButton apiId={type.apiId} name={type.name} />
         </div>
       </div>
 
