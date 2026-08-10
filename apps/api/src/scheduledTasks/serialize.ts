@@ -8,6 +8,12 @@ export type SerializedScheduledTaskRun = {
   ok: boolean;
   summary: string | null;
   reply: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  toolCallCount: number;
+  uniqueToolCount: number;
+  stoppedReason: string | null;
   createdAt: string;
 };
 
@@ -19,6 +25,8 @@ export type SerializedScheduledTask = {
   macroId: string | null;
   enabled: boolean;
   allowPublish: boolean;
+  maxTokens: number | null;
+  maxToolCalls: number | null;
   frequency: ScheduledTask["frequency"];
   timeOfDay: string;
   timeZone: string;
@@ -47,6 +55,12 @@ export function serializeScheduledTaskRun(
     ok: run.ok,
     summary: run.summary,
     reply: run.reply,
+    promptTokens: run.promptTokens,
+    completionTokens: run.completionTokens,
+    totalTokens: run.totalTokens,
+    toolCallCount: run.toolCallCount,
+    uniqueToolCount: run.uniqueToolCount,
+    stoppedReason: run.stoppedReason,
     createdAt: run.createdAt.toISOString(),
   };
 }
@@ -63,6 +77,8 @@ export function serializeScheduledTask(
     macroId: task.macroId,
     enabled: task.enabled,
     allowPublish: task.allowPublish,
+    maxTokens: task.maxTokens,
+    maxToolCalls: task.maxToolCalls,
     frequency: task.frequency,
     timeOfDay: task.timeOfDay,
     timeZone: task.timeZone,

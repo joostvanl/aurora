@@ -139,6 +139,10 @@ export async function runAiChat(input: {
   source?: string;
   /** When source is scheduled_task, opt-in to allow publish tools. */
   allowPublish?: boolean;
+  /** Soft cap on total LLM tokens for this run; null/omit = no extra cap. */
+  maxTokens?: number | null;
+  /** Soft cap on tool invocations; null/omit = MAX_STEPS tool rounds. */
+  maxToolCalls?: number | null;
 }): Promise<AiChatResponse> {
   // Entry write/optimize/macro: deterministic JSON-patch path (works without tool-calling support).
   if (
@@ -204,10 +208,30 @@ You are running as a scheduled task without a human in the loop. Create or edit 
   ];
 
   const toolCalls: AiToolCallResult[] = [];
+  const uniqueToolNames = new Set<string>();
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let stoppedReason: NonNullable<AiChatResponse["stoppedReason"]> = "completed";
   let model = config.model;
   const tools = aiToolsForSource(source, { allowPublish });
+  const maxTokens =
+    input.maxTokens != null && input.maxTokens > 0 ? input.maxTokens : null;
+  const maxToolCalls =
+    input.maxToolCalls != null && input.maxToolCalls > 0
+      ? input.maxToolCalls
+      : null;
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    if (maxToolCalls != null && toolCalls.length >= maxToolCalls) {
+      stoppedReason = "max_tool_calls";
+      break;
+    }
+    if (maxTokens != null && totalTokens >= maxTokens) {
+      stoppedReason = "max_tokens";
+      break;
+    }
+
     const completion = await chatCompletion({
       config,
       messages,
@@ -220,15 +244,28 @@ You are running as a scheduled task without a human in the loop. Create or edit 
       },
     });
     model = completion.model;
+    promptTokens += completion.usage.promptTokens;
+    completionTokens += completion.usage.completionTokens;
+    totalTokens +=
+      completion.usage.totalTokens ||
+      completion.usage.promptTokens + completion.usage.completionTokens;
     const msg = completion.message;
     messages.push(msg);
 
     const calls = msg.tool_calls ?? [];
     if (!calls.length) {
+      if (maxTokens != null && totalTokens >= maxTokens) {
+        stoppedReason = "max_tokens";
+      }
       break;
     }
 
+    let tokensCapped = maxTokens != null && totalTokens >= maxTokens;
     for (const call of calls) {
+      if (maxToolCalls != null && toolCalls.length >= maxToolCalls) {
+        stoppedReason = "max_tool_calls";
+        break;
+      }
       let args: unknown = {};
       try {
         args = call.function.arguments
@@ -257,11 +294,18 @@ You are running as a scheduled task without a human in the loop. Create or edit 
         },
       });
       toolCalls.push(result);
+      uniqueToolNames.add(call.function.name);
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         content: JSON.stringify(result),
       });
+    }
+
+    if (stoppedReason === "max_tool_calls") break;
+    if (tokensCapped) {
+      stoppedReason = "max_tokens";
+      break;
     }
   }
 
@@ -306,5 +350,13 @@ You are running as a scheduled task without a human in the loop. Create or edit 
     model,
     entry,
     versionCreated,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      toolCallCount: toolCalls.length,
+      uniqueToolCount: uniqueToolNames.size,
+    },
+    stoppedReason,
   };
 }

@@ -120,6 +120,8 @@ export async function createScheduledTask(input: {
   macroId?: string;
   enabled: boolean;
   allowPublish?: boolean;
+  maxTokens?: number | null;
+  maxToolCalls?: number | null;
   frequency: ScheduledTaskFrequency;
   timeOfDay: string;
   timeZone: string;
@@ -153,6 +155,8 @@ export async function createScheduledTask(input: {
       macroId,
       enabled: input.enabled,
       allowPublish: input.allowPublish ?? false,
+      maxTokens: input.maxTokens ?? null,
+      maxToolCalls: input.maxToolCalls ?? null,
       frequency: fields.frequency,
       timeOfDay: fields.timeOfDay,
       timeZone: fields.timeZone,

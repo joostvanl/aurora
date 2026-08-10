@@ -27,6 +27,10 @@ export const CreateScheduledTaskSchema = z
     enabled: z.boolean().optional().default(true),
     /** When true, scheduled agent may publish (admin opt-in; default draft-only). */
     allowPublish: z.boolean().optional().default(false),
+    /** Soft cap on total LLM tokens per run; omit/null = unlimited beyond provider. */
+    maxTokens: z.number().int().min(1).max(2_000_000).nullable().optional(),
+    /** Soft cap on tool invocations per run; omit/null = agent default step limit. */
+    maxToolCalls: z.number().int().min(1).max(200).nullable().optional(),
     frequency: ScheduledTaskFrequencySchema,
     timeOfDay: TimeOfDaySchema,
     timeZone: z.string().trim().min(1).max(64).default("Europe/Amsterdam"),
@@ -68,6 +72,8 @@ export const UpdateScheduledTaskSchema = z
     macroId: z.string().trim().min(1).max(64).nullable().optional(),
     enabled: z.boolean().optional(),
     allowPublish: z.boolean().optional(),
+    maxTokens: z.number().int().min(1).max(2_000_000).nullable().optional(),
+    maxToolCalls: z.number().int().min(1).max(200).nullable().optional(),
     frequency: ScheduledTaskFrequencySchema.optional(),
     timeOfDay: TimeOfDaySchema.optional(),
     timeZone: z.string().trim().min(1).max(64).optional(),
@@ -107,6 +113,12 @@ export const ScheduledTaskRunSchema = z.object({
   ok: z.boolean(),
   summary: z.string().nullable(),
   reply: z.string().nullable(),
+  promptTokens: z.number().int(),
+  completionTokens: z.number().int(),
+  totalTokens: z.number().int(),
+  toolCallCount: z.number().int(),
+  uniqueToolCount: z.number().int(),
+  stoppedReason: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -120,6 +132,8 @@ export const ScheduledTaskSchema = z.object({
   macroId: z.string().nullable(),
   enabled: z.boolean(),
   allowPublish: z.boolean(),
+  maxTokens: z.number().int().nullable(),
+  maxToolCalls: z.number().int().nullable(),
   frequency: ScheduledTaskFrequencySchema,
   timeOfDay: z.string(),
   timeZone: z.string(),

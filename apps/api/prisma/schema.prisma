@@ -255,6 +255,10 @@ model ScheduledTask {
   enabled         Boolean                 @default(true)
   /// When true, scheduled agent runs may publish entries (admin opt-in).
   allowPublish    Boolean                 @default(false)
+  /// Optional soft cap on total LLM tokens for one run (null = no extra cap).
+  maxTokens       Int?
+  /// Optional soft cap on tool invocations for one run (null = agent default steps).
+  maxToolCalls    Int?
   frequency       ScheduledTaskFrequency
   /// Local wall-clock time "HH:mm" in `timeZone`.
   timeOfDay       String
@@ -280,15 +284,22 @@ model ScheduledTask {
 }
 
 model ScheduledTaskRun {
-  id         String        @id @default(cuid())
-  taskId     String
-  task       ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  startedAt  DateTime      @default(now())
-  finishedAt DateTime?
-  ok         Boolean       @default(false)
-  summary    String?
-  reply      String?
-  createdAt  DateTime      @default(now())
+  id               String        @id @default(cuid())
+  taskId           String
+  task             ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedAt        DateTime      @default(now())
+  finishedAt       DateTime?
+  ok               Boolean       @default(false)
+  summary          String?
+  reply            String?
+  promptTokens     Int           @default(0)
+  completionTokens Int           @default(0)
+  totalTokens      Int           @default(0)
+  toolCallCount    Int           @default(0)
+  uniqueToolCount  Int           @default(0)
+  /// completed | max_tokens | max_tool_calls | error | timeout
+  stoppedReason    String?
+  createdAt        DateTime      @default(now())
 
   @@index([taskId, startedAt])
 }

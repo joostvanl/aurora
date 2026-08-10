@@ -12,7 +12,7 @@ import { RolePermission } from "../auth/roles.js";
 import { prisma } from "../db.js";
 import { httpError } from "../lib/httpError.js";
 import { runScheduledTask } from "./runScheduledTask.js";
-import { serializeScheduledTask } from "./serialize.js";
+import { serializeScheduledTask, serializeScheduledTaskRun } from "./serialize.js";
 import {
   computeInitialNextRunAt,
   createScheduledTask,
@@ -77,6 +77,8 @@ export async function registerScheduledTaskRoutes(app: FastifyInstance) {
           macroId: body.macroId,
           enabled: body.enabled,
           allowPublish: body.allowPublish,
+          maxTokens: body.maxTokens,
+          maxToolCalls: body.maxToolCalls,
           frequency: body.frequency,
           timeOfDay: body.timeOfDay,
           timeZone: body.timeZone,
@@ -133,6 +135,12 @@ export async function registerScheduledTaskRoutes(app: FastifyInstance) {
             ...(body.allowPublish !== undefined
               ? { allowPublish: body.allowPublish }
               : {}),
+            ...(body.maxTokens !== undefined
+              ? { maxTokens: body.maxTokens }
+              : {}),
+            ...(body.maxToolCalls !== undefined
+              ? { maxToolCalls: body.maxToolCalls }
+              : {}),
             frequency: fields.frequency,
             timeOfDay: fields.timeOfDay,
             timeZone: fields.timeZone,
@@ -172,16 +180,7 @@ export async function registerScheduledTaskRoutes(app: FastifyInstance) {
         });
         return {
           task: serializeScheduledTask(task),
-          run: {
-            id: run.id,
-            taskId: run.taskId,
-            startedAt: run.startedAt.toISOString(),
-            finishedAt: run.finishedAt?.toISOString() ?? null,
-            ok: run.ok,
-            summary: run.summary,
-            reply: run.reply,
-            createdAt: run.createdAt.toISOString(),
-          },
+          run: serializeScheduledTaskRun(run),
         };
       },
     );

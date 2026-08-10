@@ -29,6 +29,25 @@ describe("CreateScheduledTaskSchema", () => {
     expect(parsed.allowPublish).toBe(true);
   });
 
+  it("accepts optional maxTokens / maxToolCalls", () => {
+    const parsed = CreateScheduledTaskSchema.parse({
+      ...base,
+      maxTokens: 5000,
+      maxToolCalls: 8,
+    });
+    expect(parsed.maxTokens).toBe(5000);
+    expect(parsed.maxToolCalls).toBe(8);
+  });
+
+  it("accepts null caps to clear", () => {
+    const parsed = UpdateScheduledTaskSchema.parse({
+      maxTokens: null,
+      maxToolCalls: null,
+    });
+    expect(parsed.maxTokens).toBeNull();
+    expect(parsed.maxToolCalls).toBeNull();
+  });
+
   it("rejects weekly without byWeekday", () => {
     expect(() =>
       CreateScheduledTaskSchema.parse({ ...base, byWeekday: undefined }),

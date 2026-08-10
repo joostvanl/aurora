@@ -40,6 +40,26 @@ export const AiToolCallResultSchema = z.object({
 
 export type AiToolCallResult = z.infer<typeof AiToolCallResultSchema>;
 
+export const AiChatStoppedReasonSchema = z.enum([
+  "completed",
+  "max_tokens",
+  "max_tool_calls",
+  "error",
+  "timeout",
+]);
+
+export type AiChatStoppedReason = z.infer<typeof AiChatStoppedReasonSchema>;
+
+export const AiChatUsageSchema = z.object({
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  toolCallCount: z.number().int().nonnegative(),
+  uniqueToolCount: z.number().int().nonnegative(),
+});
+
+export type AiChatUsage = z.infer<typeof AiChatUsageSchema>;
+
 export const AiChatResponseSchema = z.object({
   reply: z.string(),
   toolCalls: z.array(AiToolCallResultSchema),
@@ -54,6 +74,10 @@ export const AiChatResponseSchema = z.object({
     })
     .nullable()
     .optional(),
+  /** Token + tool usage for this agent loop (optional for entry-edit path). */
+  usage: AiChatUsageSchema.optional(),
+  /** Why the agent loop ended (optional for entry-edit path). */
+  stoppedReason: AiChatStoppedReasonSchema.optional(),
 });
 
 export type AiChatResponse = z.infer<typeof AiChatResponseSchema>;

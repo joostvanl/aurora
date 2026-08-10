@@ -42,6 +42,8 @@ function baseTask(overrides: Record<string, unknown> = {}) {
     macroId: null,
     enabled: true,
     allowPublish: false,
+    maxTokens: null,
+    maxToolCalls: null,
     frequency: "daily",
     timeOfDay: "08:00",
     timeZone: "Europe/Amsterdam",
@@ -89,6 +91,14 @@ describe("runScheduledTask", () => {
       reply: "Created draft entry.",
       toolCalls: [{ name: "create_entry", ok: true, summary: "ok" }],
       model: "test",
+      usage: {
+        promptTokens: 10,
+        completionTokens: 20,
+        totalTokens: 30,
+        toolCallCount: 1,
+        uniqueToolCount: 1,
+      },
+      stoppedReason: "completed",
     });
 
     const { run, task } = await runScheduledTask({
@@ -105,13 +115,56 @@ describe("runScheduledTask", () => {
         role: "admin",
         source: "scheduled_task",
         allowPublish: false,
+        maxTokens: null,
+        maxToolCalls: null,
         context: expect.objectContaining({ mode: "general" }),
       }),
     );
     expect(run.ok).toBe(true);
+    expect(run.totalTokens).toBe(30);
+    expect(run.toolCallCount).toBe(1);
+    expect(run.stoppedReason).toBe("completed");
     expect(task.lastStatus).toBe("ok");
     expect(task.nextRunAt).toBeInstanceOf(Date);
     expect(task.enabled).toBe(true);
+  });
+
+  it("passes caps to the agent and persists max_tool_calls stop", async () => {
+    findFirst.mockResolvedValue(
+      baseTask({ maxTokens: 1000, maxToolCalls: 2 }),
+    );
+    const chat = vi.fn().mockResolvedValue({
+      reply: "Stopped early",
+      toolCalls: [
+        { name: "list_entries", ok: true, summary: "ok" },
+        { name: "create_entry", ok: true, summary: "ok" },
+      ],
+      model: "test",
+      usage: {
+        promptTokens: 40,
+        completionTokens: 60,
+        totalTokens: 100,
+        toolCallCount: 2,
+        uniqueToolCount: 2,
+      },
+      stoppedReason: "max_tool_calls",
+    });
+
+    const { run } = await runScheduledTask({
+      websiteId: "ws1",
+      taskId: "task1",
+      runAiChat: chat,
+    });
+
+    expect(chat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 1000,
+        maxToolCalls: 2,
+      }),
+    );
+    expect(run.stoppedReason).toBe("max_tool_calls");
+    expect(run.totalTokens).toBe(100);
+    expect(run.uniqueToolCount).toBe(2);
   });
 
   it("disables once-tasks and clears nextRunAt", async () => {

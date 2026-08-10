@@ -99,6 +99,12 @@ export async function runScheduledTask(input: {
   let summary = "";
   let reply: string | null = null;
   let lastError: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let toolCallCount = 0;
+  let uniqueToolCount = 0;
+  let stoppedReason: string | null = null;
 
   try {
     const userId = await resolveScheduledTaskActorUserId(task);
@@ -114,6 +120,8 @@ export async function runScheduledTask(input: {
         role: "admin",
         source: "scheduled_task",
         allowPublish: task.allowPublish,
+        maxTokens: task.maxTokens,
+        maxToolCalls: task.maxToolCalls,
         context: {
           mode: "general",
           websiteName: website?.name,
@@ -123,12 +131,21 @@ export async function runScheduledTask(input: {
     );
     ok = true;
     reply = truncate(result.reply ?? "", REPLY_MAX) || null;
+    promptTokens = result.usage?.promptTokens ?? 0;
+    completionTokens = result.usage?.completionTokens ?? 0;
+    totalTokens = result.usage?.totalTokens ?? 0;
+    toolCallCount = result.usage?.toolCallCount ?? result.toolCalls.length;
+    uniqueToolCount =
+      result.usage?.uniqueToolCount ??
+      new Set(result.toolCalls.map((t) => t.name)).size;
+    stoppedReason = result.stoppedReason ?? "completed";
     const toolOk = result.toolCalls.filter((t) => t.ok).length;
     const toolFail = result.toolCalls.filter((t) => !t.ok).length;
+    const usageBit = `tokens=${totalTokens} tools=${toolCallCount} unique=${uniqueToolCount} stop=${stoppedReason}`;
     summary = truncate(
       toolOk || toolFail
-        ? `Agent finished (${toolOk} tool ok, ${toolFail} failed). ${result.reply ?? ""}`.trim()
-        : (result.reply ?? "Agent finished.").trim(),
+        ? `Agent finished (${toolOk} tool ok, ${toolFail} failed; ${usageBit}). ${result.reply ?? ""}`.trim()
+        : `Agent finished (${usageBit}). ${result.reply ?? ""}`.trim(),
       SUMMARY_MAX,
     );
   } catch (err) {
@@ -136,6 +153,7 @@ export async function runScheduledTask(input: {
     const message = err instanceof Error ? err.message : String(err);
     lastError = truncate(message, ERROR_MAX);
     summary = truncate(message, SUMMARY_MAX);
+    stoppedReason = /timed out/i.test(message) ? "timeout" : "error";
   }
 
   const finishedAt = new Date();
@@ -149,6 +167,12 @@ export async function runScheduledTask(input: {
         ok,
         summary,
         reply,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        toolCallCount,
+        uniqueToolCount,
+        stoppedReason,
       },
     }),
     prisma.scheduledTask.update({

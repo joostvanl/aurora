@@ -243,6 +243,8 @@ Outlook-like **scheduled AI agent runs** for a website. Studio: **Settings → T
 | `startAt` / `endAt` | ISO datetimes; `endAt` optional — no further fires after it |
 | `enabled` | Default `true` |
 | `allowPublish` | Default `false`. When `true` (admin opt-in), the agent may publish/unpublish during the run |
+| `maxTokens` | Optional soft cap on total LLM tokens for one run (`null`/omit = no extra cap) |
+| `maxToolCalls` | Optional soft cap on tool invocations for one run (`null`/omit = agent default step limit) |
 
 **Runtime**
 
@@ -251,8 +253,9 @@ Outlook-like **scheduled AI agent runs** for a website. Studio: **Settings → T
 - Max **one concurrent run per website**; optimistic claim on `nextRunAt`.
 - AI usage metered with source `scheduled_task`.
 - **Draft-only by default:** `publish_entry` / `unpublish_entry` are omitted and blocked unless `allowPublish` is true; create/meta still forced to draft when publish is not allowed.
+- Optional per-task caps (`maxTokens` / `maxToolCalls`) stop the agent loop gracefully; run rows store `promptTokens`, `completionTokens`, `totalTokens`, `toolCallCount`, `uniqueToolCount`, and `stoppedReason` (`completed` \| `max_tokens` \| `max_tool_calls` \| `error` \| `timeout`).
 - After a run: `once` or exhausted schedule → `enabled: false`, `nextRunAt: null`; otherwise `nextRunAt` advances.
-- Inspect failures via `lastStatus` / `lastError` on the task and `ScheduledTaskRun` rows (`summary`, `reply`).
+- Inspect failures via `lastStatus` / `lastError` on the task and `ScheduledTaskRun` rows (`summary`, `reply`, usage fields).
 
 `CmsClient`: `listScheduledTasks`, `getScheduledTask`, `createScheduledTask`, `updateScheduledTask`, `deleteScheduledTask`, `runScheduledTaskNow`.
 

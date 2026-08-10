@@ -32,6 +32,8 @@ type FormState = {
   macroId: string;
   enabled: boolean;
   allowPublish: boolean;
+  maxTokens: string;
+  maxToolCalls: string;
   frequency: ScheduledTaskFrequency;
   timeOfDay: string;
   timeZone: string;
@@ -56,6 +58,8 @@ function emptyForm(): FormState {
     macroId: "",
     enabled: true,
     allowPublish: false,
+    maxTokens: "",
+    maxToolCalls: "",
     frequency: "daily",
     timeOfDay: "09:00",
     timeZone: "Europe/Amsterdam",
@@ -91,6 +95,8 @@ function formFromTask(task: ScheduledTask): FormState {
     macroId: task.macroId ?? "",
     enabled: task.enabled,
     allowPublish: task.allowPublish,
+    maxTokens: task.maxTokens != null ? String(task.maxTokens) : "",
+    maxToolCalls: task.maxToolCalls != null ? String(task.maxToolCalls) : "",
     frequency: task.frequency,
     timeOfDay: task.timeOfDay,
     timeZone: task.timeZone,
@@ -126,11 +132,23 @@ function frequencySummary(task: ScheduledTask): string {
   return `Maandelijks op dag ${task.byMonthDay ?? "?"} om ${time}`;
 }
 
+function parseOptionalPositiveInt(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error("Limieten moeten lege velden of positieve gehele getallen zijn.");
+  }
+  return n;
+}
+
 function buildPayload(form: FormState): CreateScheduledTaskInput {
   const payload: CreateScheduledTaskInput = {
     name: form.name.trim(),
     enabled: form.enabled,
     allowPublish: form.allowPublish,
+    maxTokens: parseOptionalPositiveInt(form.maxTokens),
+    maxToolCalls: parseOptionalPositiveInt(form.maxToolCalls),
     frequency: form.frequency,
     timeOfDay: form.timeOfDay,
     timeZone: form.timeZone.trim() || "Europe/Amsterdam",
@@ -660,6 +678,47 @@ export function TasksStudio() {
             )}
           </div>
 
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "1rem",
+            }}
+          >
+            <div className="field">
+              <label htmlFor="task-max-tokens">Max tokens (optioneel)</label>
+              <input
+                id="task-max-tokens"
+                type="number"
+                min={1}
+                placeholder="Geen limiet"
+                value={form.maxTokens}
+                disabled={!isAdmin}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, maxTokens: e.target.value }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="task-max-tools">Max tool calls (optioneel)</label>
+              <input
+                id="task-max-tools"
+                type="number"
+                min={1}
+                placeholder="Agent-default"
+                value={form.maxToolCalls}
+                disabled={!isAdmin}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, maxToolCalls: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Soft caps per run. Leeg = geen extra limiet. Gebruik recente runs om
+            limieten te tunen.
+          </p>
+
           {isAdmin && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               <button className="btn" type="submit" disabled={pending}>
@@ -728,6 +787,9 @@ export function TasksStudio() {
                 <tr>
                   <th>Gestart</th>
                   <th>Ok</th>
+                  <th>Tokens</th>
+                  <th>Tools</th>
+                  <th>Stop</th>
                   <th>Samenvatting</th>
                 </tr>
               </thead>
@@ -736,6 +798,14 @@ export function TasksStudio() {
                   <tr key={run.id}>
                     <td className="muted">{formatWhen(run.startedAt)}</td>
                     <td>{run.ok ? "ja" : "nee"}</td>
+                    <td className="muted">{run.totalTokens}</td>
+                    <td className="muted">
+                      {run.toolCallCount}
+                      {run.uniqueToolCount
+                        ? ` (${run.uniqueToolCount} uniek)`
+                        : ""}
+                    </td>
+                    <td className="muted">{run.stoppedReason ?? "—"}</td>
                     <td>{run.summary ?? "—"}</td>
                   </tr>
                 ))}

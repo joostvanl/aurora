@@ -1,0 +1,11 @@
+-- AlterTable
+ALTER TABLE "ScheduledTask" ADD COLUMN "maxTokens" INTEGER,
+ADD COLUMN "maxToolCalls" INTEGER;
+
+-- AlterTable
+ALTER TABLE "ScheduledTaskRun" ADD COLUMN "promptTokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "completionTokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "totalTokens" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "toolCallCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "uniqueToolCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "stoppedReason" TEXT;
