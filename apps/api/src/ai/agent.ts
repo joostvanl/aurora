@@ -25,6 +25,7 @@ import {
 } from "./frontendBrief.js";
 import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
 import { buildWebsiteKnowledge } from "./websiteContext.js";
+import { formatCurrentDateTimePromptBlock } from "./currentTime.js";
 
 const MAX_STEPS = 16;
 
@@ -54,8 +55,11 @@ async function buildSystemPrompt(
 
   const knowledge = await buildWebsiteKnowledge(websiteId, context);
   const custom = websiteInstructions?.trim() ?? "";
+  const clock = formatCurrentDateTimePromptBlock();
 
   return `You are Aurora CMS Assistant — an AI-first content operator for a headless CMS.
+
+${clock}
 
 You can inspect and mutate content types, fields, entries, publish state, and site content via tools.
 

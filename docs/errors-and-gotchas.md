@@ -48,6 +48,7 @@ The typed client exposes `CmsApiError.requestId` when the header or JSON body in
 7. **AI config is per website** (admin only); chat runs in the studio dock within the user’s role.
 8. **`media` fields** store a public image URL (upload via `POST /api/v1/admin/media` or paste). Default storage is local disk under `/uploads/{websiteId}/`. Per website you can switch to ImageKit (Settings → Media storage); then uploads return an ImageKit CDN URL instead.
 9. **Scheduled tasks (Taken)** run the full AI agent unattended and are **draft-only by default**. Admins can opt in to `allowPublish` (with a UI warning) so a task may publish. Optional `maxTokens` / `maxToolCalls` soft-cap a run; check run usage + `stoppedReason` when tuning. Disable the poller with `CMS_SCHEDULED_TASKS=0`. Check `lastStatus` / `lastError` on the task when a run fails.
+10. **AI agent clock** — each chat/scheduled run gets an authoritative **Current date/time** block in the system prompt (UTC + local). Default zone is `Europe/Amsterdam`; override with `CMS_AGENT_TIMEZONE`. Tool `get_current_datetime` refreshes mid-conversation. Do not trust model-invented dates.
 
 ## Health check first
 

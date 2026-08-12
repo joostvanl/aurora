@@ -11,6 +11,7 @@ describe("scheduled_task tool policy", () => {
     expect(names).not.toContain("unpublish_entry");
     expect(names).toContain("create_entry");
     expect(names).toContain("fetch_url");
+    expect(names).toContain("get_current_datetime");
   });
 
   it("includes publish tools when allowPublish is true", () => {

@@ -29,6 +29,7 @@ import { createAllLocaleSiblings } from "../lib/translations.js";
 import { applyStrReplace } from "./patches.js";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
+import { getCurrentDateTime } from "./currentTime.js";
 
 /** Schema-mutating tools require builder+; everything else is content (editor+). */
 export const SCHEMA_TOOLS = new Set([
@@ -739,6 +740,19 @@ export const aiTools: ChatTool[] = [
           },
         },
         required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_current_datetime",
+      description:
+        "Return the authoritative server current date/time in UTC and the agent local timezone (CMS_AGENT_TIMEZONE, default Europe/Amsterdam). Prefer the Current date/time block already in the system prompt; call this only when you need a refreshed clock mid-conversation.",
+      parameters: {
+        type: "object",
+        properties: {},
         additionalProperties: false,
       },
     },
@@ -1665,6 +1679,15 @@ export async function executeAiTool(
           }
           throw error;
         }
+      }
+      case "get_current_datetime": {
+        const data = getCurrentDateTime();
+        return {
+          name,
+          ok: true,
+          summary: `Now ${data.localDisplay} (${data.timeZone})`,
+          data,
+        };
       }
       default:
         return {
