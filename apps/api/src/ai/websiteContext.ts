@@ -2,10 +2,12 @@ import type { AiChatContext } from "@cms/shared";
 import { prisma } from "../db.js";
 import { entryInclude } from "../lib/entries.js";
 import { serializeEntry } from "../lib/serialize.js";
+import {
+  resolveIndexPerType,
+  resolveKnowledgeMaxChars,
+} from "./contextBudget.js";
 
-const MAX_CHARS = 12_000;
 const TITLE_KEYS = ["title", "label", "name", "siteName", "heading"];
-const INDEX_PER_TYPE = 40;
 const FIELD_VALUE_MAX = 280;
 const FOCUS_VALUE_MAX = 2_500;
 
@@ -55,6 +57,10 @@ export async function buildWebsiteKnowledge(
   websiteId: string,
   focus?: AiChatContext,
 ): Promise<string> {
+  const focused = Boolean(focus?.entryId);
+  const maxChars = resolveKnowledgeMaxChars(focused);
+  const indexPerType = resolveIndexPerType(focused);
+
   const website = await prisma.website.findUnique({
     where: { id: websiteId },
     select: {
@@ -74,7 +80,7 @@ export async function buildWebsiteKnowledge(
         fields: { orderBy: { sortOrder: "asc" } },
         entries: {
           orderBy: { updatedAt: "desc" },
-          take: INDEX_PER_TYPE,
+          take: indexPerType,
           include: {
             fieldValues: { include: { field: true } },
           },
@@ -163,8 +169,8 @@ export async function buildWebsiteKnowledge(
       return `- ${e.status} \`${e.slug}\` locale=${e.locale} id=${e.id}${label ? ` ${label}` : ""}`;
     });
     const more =
-      ct.entries.length >= INDEX_PER_TYPE
-        ? `\n- …(showing latest ${INDEX_PER_TYPE})`
+      ct.entries.length >= indexPerType
+        ? `\n- …(showing latest ${indexPerType})`
         : "";
     indexBlocks.push(`### ${ct.apiId}\n${lines.join("\n")}${more}`);
   }
@@ -237,8 +243,8 @@ ${JSON.stringify(compact, null, 2)}
 - Never create entries in a locale that is not listed under Website locales (especially do not default to en-US unless it is the site defaultLocale).`);
 
   let text = sections.join("\n\n");
-  if (text.length > MAX_CHARS) {
-    text = `${text.slice(0, MAX_CHARS - 1)}…\n\n(Website knowledge truncated for length.)`;
+  if (text.length > maxChars) {
+    text = `${text.slice(0, maxChars - 1)}…\n\n(Website knowledge truncated for length.)`;
   }
   return text;
 }

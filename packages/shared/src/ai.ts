@@ -56,6 +56,10 @@ export const AiChatUsageSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   toolCallCount: z.number().int().nonnegative(),
   uniqueToolCount: z.number().int().nonnegative(),
+  /** Sum of message+tool-schema characters across agent steps (approx). */
+  inputCharsApprox: z.number().int().nonnegative().optional(),
+  /** Number of LLM completion rounds in this run. */
+  steps: z.number().int().nonnegative().optional(),
 });
 
 export type AiChatUsage = z.infer<typeof AiChatUsageSchema>;

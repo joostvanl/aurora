@@ -20,12 +20,15 @@ describe("scheduled_task tool policy", () => {
     }).map((t) => t.function.name);
     expect(names).toContain("publish_entry");
     expect(names).toContain("unpublish_entry");
+    expect(names).not.toContain("list_forms");
+    expect(names).not.toContain("create_content_type");
   });
 
   it("keeps publish tools for normal chat", () => {
     const names = aiToolsForSource("chat").map((t) => t.function.name);
     expect(names).toContain("publish_entry");
     expect(names).toContain("unpublish_entry");
+    expect(names).toContain("list_forms");
   });
 
   it("lists blocked tool names", () => {

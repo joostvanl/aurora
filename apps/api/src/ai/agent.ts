@@ -26,6 +26,12 @@ import {
 import { ensureStudioMarkdownLinks } from "./cmsLinks.js";
 import { buildWebsiteKnowledge } from "./websiteContext.js";
 import { formatCurrentDateTimePromptBlock } from "./currentTime.js";
+import {
+  estimateChatInputChars,
+  resolveHistoryMax,
+  resolveToolResultMaxChars,
+  truncateToolResultForModel,
+} from "./contextBudget.js";
 
 const MAX_STEPS = 16;
 
@@ -199,6 +205,8 @@ You are running as a scheduled task without a human in the loop. This task is co
 You are running as a scheduled task without a human in the loop. Create or edit entries as drafts only — do not publish. Prefer concrete tool actions that fulfill the task prompt.`;
   }
 
+  const historyMax = resolveHistoryMax();
+  const toolResultMaxChars = resolveToolResultMaxChars();
   const messages: ChatMessage[] = [
     {
       role: "system",
@@ -206,7 +214,7 @@ You are running as a scheduled task without a human in the loop. Create or edit 
     },
     ...(input.history ?? [])
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-20)
+      .slice(-historyMax)
       .map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: input.message },
   ];
@@ -216,9 +224,15 @@ You are running as a scheduled task without a human in the loop. Create or edit 
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokens = 0;
+  let inputCharsApprox = 0;
+  let steps = 0;
   let stoppedReason: NonNullable<AiChatResponse["stoppedReason"]> = "completed";
   let model = config.model;
-  const tools = aiToolsForSource(source, { allowPublish });
+  const tools = aiToolsForSource(source, {
+    allowPublish,
+    role: input.role,
+    context: input.context,
+  });
   const maxTokens =
     input.maxTokens != null && input.maxTokens > 0 ? input.maxTokens : null;
   const maxToolCalls =
@@ -235,6 +249,9 @@ You are running as a scheduled task without a human in the loop. Create or edit 
       stoppedReason = "max_tokens";
       break;
     }
+
+    inputCharsApprox += estimateChatInputChars(messages, tools);
+    steps += 1;
 
     const completion = await chatCompletion({
       config,
@@ -302,7 +319,7 @@ You are running as a scheduled task without a human in the loop. Create or edit 
       messages.push({
         role: "tool",
         tool_call_id: call.id,
-        content: JSON.stringify(result),
+        content: truncateToolResultForModel(result, toolResultMaxChars),
       });
     }
 
@@ -360,6 +377,8 @@ You are running as a scheduled task without a human in the loop. Create or edit 
       totalTokens,
       toolCallCount: toolCalls.length,
       uniqueToolCount: uniqueToolNames.size,
+      inputCharsApprox,
+      steps,
     },
     stoppedReason,
   };

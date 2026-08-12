@@ -30,6 +30,8 @@ import { applyStrReplace } from "./patches.js";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 import { getCurrentDateTime } from "./currentTime.js";
+import { resolveToolDomains, toolDomain } from "./toolScope.js";
+import type { AiChatContext } from "@cms/shared";
 
 /** Schema-mutating tools require builder+; everything else is content (editor+). */
 export const SCHEMA_TOOLS = new Set([
@@ -759,17 +761,31 @@ export const aiTools: ChatTool[] = [
   },
 ];
 
-/** Tool list for chatCompletion; scheduled runs hide publish unless allowPublish. */
+/** Tool list for chatCompletion; scoped by source, role, and studio context. */
 export function aiToolsForSource(
   source?: string,
-  opts?: { allowPublish?: boolean },
+  opts?: {
+    allowPublish?: boolean;
+    role?: WebsiteRole;
+    context?: AiChatContext;
+  },
 ): ChatTool[] {
+  let tools = aiTools;
+
   if (source === "scheduled_task" && !opts?.allowPublish) {
-    return aiTools.filter(
+    tools = tools.filter(
       (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
     );
   }
-  return aiTools;
+
+  if (opts?.role && !roleAtLeast(opts.role, RolePermission.schema)) {
+    tools = tools.filter((t) => !SCHEMA_TOOLS.has(t.function.name));
+  }
+
+  const domains = resolveToolDomains(opts?.context, source);
+  tools = tools.filter((t) => domains.has(toolDomain(t.function.name)));
+
+  return tools;
 }
 
 export async function executeAiTool(
