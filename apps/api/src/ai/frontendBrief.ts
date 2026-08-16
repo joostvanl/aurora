@@ -149,21 +149,52 @@ export function mergeFrontendBrief(reply: string, brief: string): string {
 
 /**
  * True when a single message clearly approves a pending structural change.
+ *
+ * Accepts natural NL/EN confirmations (with or without a comma or trailing
+ * words), e.g. "ja", "ja, doe maar", "ja graag", "ga je gang", "prima doe dat",
+ * "go for it", "yes please do it". Ambivalent replies ("ja maar niet ..."),
+ * questions ("ja, waarom?"), and refusals are NOT treated as approval.
  */
 export function messageConfirmsSchemaChange(message: string): boolean {
   const text = message.trim().toLowerCase();
   if (!text) return false;
 
-  // Explicit approval phrases (NL + EN). Short confirmations after a proposal, or
-  // approval combined with the structural request in one message.
+  // A refusal is never an approval.
+  if (messageRejectsSchemaChange(text)) return false;
+
+  // Ambivalence / doubt: an affirmation qualified by a negation ("ja maar niet
+  // het body veld") is not a clear approval.
+  if (/\b(maar|echter|but)\b[\s\S]*\b(niet|geen|not|no|liever)\b/.test(text)) {
+    return false;
+  }
+
+  // A trailing question means the user is asking, not approving.
+  if (text.endsWith("?")) return false;
+
+  // Affirmative opener (NL + EN), optionally followed by more words.
+  if (
+    /^(ja+|jazeker|jawel|yes|yep|yeah|yup|ok|oke|oké|okay|akkoord|prima|top|zeker|graag|goed|sure|si|oui)\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Idiomatic go-ahead phrases anywhere in the message.
+  if (
+    /\b(doe\s+(maar|het|dat)|ga\s+(je\s+gang|verder|door)|gaan\s+met|ga\s+ervoor|voer\s+(het\s+|dit\s+)?door|is\s+goed|helemaal\s+goed|klopt|bevestig(d|ing)?|go(\s+(ahead|for\s+it))?|do\s+it|please\s+do|proceed|lgtm|approved?|i\s+confirm|confirmed)\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Approval combined with the structural request in one sentence.
   return (
-    /^(ja|yes|yep|yeah|ok|okay|akkoord|prima|goed|sure|do it|go ahead|proceed|bevestig|bevestigd|approved?|lgtm)(\s+(go ahead|doe maar|voer door|please))?\b[.!]*$/i.test(
+    /\b(ja|yes|ok|okay|akkoord|prima|sure)\b[\s\S]{0,80}\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan|schema|content\s*type|veld|field)\b/.test(
       text,
     ) ||
-    /\b(ja|yes|ok|okay|akkoord|prima|sure|go\s+ahead|doe\s+maar|voer\s+(het\s+)?door|bevestig(d|ing)?|i\s+confirm|confirmed|approved?)\b[\s\S]{0,80}\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan|schema|content\s*type|veld|field)\b/i.test(
-      text,
-    ) ||
-    /\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan)\b[\s\S]{0,80}\b(ja|yes|ok|okay|akkoord|bevestig(d|ing)?|confirmed|approved?)\b/i.test(
+    /\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan)\b[\s\S]{0,80}\b(ja|yes|ok|okay|akkoord|bevestig(d|ing)?|confirmed|approved?)\b/.test(
       text,
     )
   );
@@ -173,8 +204,13 @@ export function messageConfirmsSchemaChange(message: string): boolean {
 export function messageRejectsSchemaChange(message: string): boolean {
   const text = message.trim().toLowerCase();
   if (!text) return false;
-  return /^(nee|no|nope|niet|stop|cancel|afkeuren|weiger|don't|do not)\b[.!]*$/i.test(
-    text,
+  return (
+    /^(nee+|neen|no|nope|niet\s+doen|stop|cancel|annuleer|afkeuren|weiger|liever\s+niet|don'?t|do\s+not)\b/.test(
+      text,
+    ) ||
+    /\b(doe\s+maar\s+niet|niet\s+doen|liever\s+niet|toch\s+niet|laat\s+maar|klopt\s+niet|niet\s+akkoord)\b/.test(
+      text,
+    )
   );
 }
 
