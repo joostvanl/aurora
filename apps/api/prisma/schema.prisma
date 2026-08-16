@@ -71,6 +71,9 @@ model User {
   memberships  Membership[]
   userApiTokens UserApiToken[]
   createdEntries Entry[]
+  entryVersions EntryVersion[]
+  contentTypeVersions ContentTypeVersion[]
+  auditEvents  AuditEvent[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -99,6 +102,7 @@ model Website {
   aiUsageEvents AiUsageEvent[]
   contentRequestEvents ContentRequestEvent[]
   scheduledTasks ScheduledTask[]
+  auditEvents  AuditEvent[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -160,6 +164,7 @@ model ContentType {
   localizationMode LocalizationMode  @default(explicit)
   fields           FieldDefinition[]
   entries          Entry[]
+  versions         ContentTypeVersion[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -220,15 +225,60 @@ model EntryFieldValue {
 }
 
 model EntryVersion {
-  id        String   @id @default(cuid())
-  entryId   String
-  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  label     String?
-  source    String
-  snapshot  Json
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  entryId         String
+  entry           Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  label           String?
+  source          String
+  snapshot        Json
+  createdByUserId String?
+  createdBy       User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  /** user | ai | system */
+  actorKind       String?
+  changeSummary   String?
+  createdAt       DateTime @default(now())
 
   @@index([entryId, createdAt])
+  @@index([createdByUserId])
+}
+
+model ContentTypeVersion {
+  id              String      @id @default(cuid())
+  contentTypeId   String
+  contentType     ContentType @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
+  label           String?
+  source          String
+  snapshot        Json
+  createdByUserId String?
+  createdBy       User?       @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  /** user | ai | system */
+  actorKind       String?
+  changeSummary   String?
+  createdAt       DateTime    @default(now())
+
+  @@index([contentTypeId, createdAt])
+  @@index([createdByUserId])
+}
+
+/// Append-only audit trail for content + schema mutations (CMS-33).
+model AuditEvent {
+  id           String   @id @default(cuid())
+  websiteId    String
+  website      Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  actorUserId  String?
+  actor        User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  /** user | ai | system */
+  actorKind    String
+  action       String
+  resourceType String
+  resourceId   String
+  summary      String
+  meta         Json?
+  createdAt    DateTime @default(now())
+
+  @@index([websiteId, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@index([actorUserId])
 }
 
 model Setting {

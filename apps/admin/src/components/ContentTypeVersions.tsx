@@ -2,32 +2,21 @@
 
 import type {
   AuditEvent,
-  EntryVersion,
-  FlatEntry,
+  ContentType,
+  ContentTypeVersion,
   SnapshotDiffChange,
 } from "@cms/shared";
 import { useCallback, useEffect, useState } from "react";
 import { getBrowserAdminClient } from "@/lib/auth";
 
-function actorLabel(v: EntryVersion) {
-  if (v.actorKind === "ai") return "AI";
-  if (v.actorKind === "system") return "System";
-  if (v.actorKind === "user") return "User";
-  return v.source === "ai" ? "AI" : "—";
-}
-
-export function EntryVersions({
-  contentTypeApiId,
-  entryId,
+export function ContentTypeVersions({
+  contentType,
   onRestored,
-  refreshKey,
 }: {
-  contentTypeApiId: string;
-  entryId: string;
-  onRestored: (entry: FlatEntry) => void;
-  refreshKey?: string | number;
+  contentType: ContentType;
+  onRestored?: (next: ContentType) => void;
 }) {
-  const [versions, setVersions] = useState<EntryVersion[]>([]);
+  const [versions, setVersions] = useState<ContentTypeVersion[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -38,23 +27,23 @@ export function EntryVersions({
     try {
       const client = getBrowserAdminClient();
       const [items, events] = await Promise.all([
-        client.listEntryVersions(contentTypeApiId, entryId),
+        client.listContentTypeVersions(contentType.apiId),
         client.listAuditEvents({
-          resourceType: "entry",
-          resourceId: entryId,
+          resourceType: "content_type",
+          resourceId: contentType.id,
           limit: 10,
         }),
       ]);
       setVersions(items);
       setAudit(events);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load versions");
+      setError(err instanceof Error ? err.message : "Failed to load history");
     }
-  }, [contentTypeApiId, entryId]);
+  }, [contentType.apiId, contentType.id]);
 
   useEffect(() => {
     void load();
-  }, [load, refreshKey]);
+  }, [load]);
 
   function toggleSelect(id: string) {
     setDiff(null);
@@ -71,9 +60,8 @@ export function EntryVersions({
     setError(null);
     try {
       const [from, to] = selected;
-      const res = await getBrowserAdminClient().diffEntryVersions(
-        contentTypeApiId,
-        entryId,
+      const res = await getBrowserAdminClient().diffContentTypeVersions(
+        contentType.apiId,
         from,
         to,
       );
@@ -89,7 +77,7 @@ export function EntryVersions({
     setPending(true);
     setError(null);
     try {
-      await getBrowserAdminClient().createEntryVersion(contentTypeApiId, entryId, {
+      await getBrowserAdminClient().createContentTypeVersion(contentType.apiId, {
         label: "Manual checkpoint",
       });
       await load();
@@ -101,18 +89,21 @@ export function EntryVersions({
   }
 
   async function restore(versionId: string) {
-    if (!confirm("Restore this version? Current state will be saved as a checkpoint first.")) {
+    if (
+      !confirm(
+        "Restore this schema version? Current schema will be checkpointed first. Field type changes with existing values may be blocked.",
+      )
+    ) {
       return;
     }
     setPending(true);
     setError(null);
     try {
-      const res = await getBrowserAdminClient().restoreEntryVersion(
-        contentTypeApiId,
-        entryId,
+      const res = await getBrowserAdminClient().restoreContentTypeVersion(
+        contentType.apiId,
         versionId,
       );
-      onRestored(res.entry);
+      onRestored?.(res.contentType);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Restore failed");
@@ -125,7 +116,7 @@ export function EntryVersions({
     <div className="panel" style={{ marginTop: "1rem" }}>
       <div className="actions" style={{ justifyContent: "space-between" }}>
         <strong style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
-          Versions
+          Schema history
         </strong>
         <div className="actions">
           <button
@@ -147,7 +138,7 @@ export function EntryVersions({
         </div>
       </div>
       <p className="muted" style={{ marginTop: "0.5rem" }}>
-        Saves and AI edits create versions automatically. Select two rows to compare.
+        Field and type changes create versions automatically.
       </p>
       {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
       <table className="table" style={{ marginTop: "0.75rem" }}>
@@ -157,7 +148,6 @@ export function EntryVersions({
             <th>When</th>
             <th>Label</th>
             <th>Source</th>
-            <th>Actor</th>
             <th></th>
           </tr>
         </thead>
@@ -169,7 +159,7 @@ export function EntryVersions({
                   type="checkbox"
                   checked={selected.includes(v.id)}
                   onChange={() => toggleSelect(v.id)}
-                  aria-label={`Select version ${v.id}`}
+                  aria-label={`Select schema version ${v.id}`}
                 />
               </td>
               <td className="muted">{new Date(v.createdAt).toLocaleString()}</td>
@@ -182,11 +172,10 @@ export function EntryVersions({
                 ) : null}
               </td>
               <td>
-                <span className="badge" data-status={v.source === "ai" ? "draft" : "published"}>
+                <span className="badge" data-status="published">
                   {v.source}
                 </span>
               </td>
-              <td className="muted">{actorLabel(v)}</td>
               <td>
                 <button
                   className="btn btn-secondary"
@@ -201,8 +190,8 @@ export function EntryVersions({
           ))}
           {versions.length === 0 && (
             <tr>
-              <td colSpan={6} className="empty">
-                No versions yet. Saves, AI edits, or a manual checkpoint will appear here.
+              <td colSpan={5} className="empty">
+                No schema versions yet.
               </td>
             </tr>
           )}

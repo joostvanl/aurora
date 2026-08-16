@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getAdminClient } from "@/lib/cms";
+import { ContentTypeVersions } from "@/components/ContentTypeVersions";
 import { DeleteContentTypeButton } from "@/components/DeleteContentTypeButton";
 import { FieldManager } from "@/components/FieldManager";
 import { LocalizationModeEditor } from "@/components/LocalizationModeEditor";
@@ -53,6 +54,7 @@ export default async function ContentTypeDetailPage({
 
       <LocalizationModeEditor contentType={type} />
       <FieldManager contentType={type} />
+      <ContentTypeVersions contentType={type} />
     </>
   );
 }

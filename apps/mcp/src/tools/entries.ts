@@ -336,4 +336,43 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       }
     },
   );
+
+  server.tool(
+    "list_entry_versions",
+    "List immutable entry versions (newest first). Management API.",
+    {
+      apiId: z.string().min(1),
+      entryId: z.string().min(1),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
+    async ({ apiId, entryId, limit, offset }) => {
+      try {
+        return toolOk(
+          await client.listEntryVersions(apiId, entryId, { limit, offset }),
+        );
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
+    "restore_entry_version",
+    "Restore an entry to a prior version (checkpoints current state first).",
+    {
+      apiId: z.string().min(1),
+      entryId: z.string().min(1),
+      versionId: z.string().min(1),
+    },
+    async ({ apiId, entryId, versionId }) => {
+      try {
+        return toolOk(
+          await client.restoreEntryVersion(apiId, entryId, versionId),
+        );
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
 }

@@ -34,7 +34,10 @@ import type {
   AiListModelsRequest,
   AiListModelsResponse,
   AiStatus,
+  AuditEvent,
+  ContentTypeVersion,
   EntryVersion,
+  SnapshotDiffChange,
 } from "./ai.js";
 import type { ContentRequestUsage } from "./analytics.js";
 import type {
@@ -720,9 +723,35 @@ export class CmsClient {
     );
   }
 
-  listEntryVersions(apiId: string, entryId: string) {
+  listEntryVersions(
+    apiId: string,
+    entryId: string,
+    params?: { limit?: number; offset?: number },
+  ) {
+    const search = new URLSearchParams();
+    if (params?.limit != null) search.set("limit", String(params.limit));
+    if (params?.offset != null) search.set("offset", String(params.offset));
+    const qs = search.toString();
     return this.request<EntryVersion[]>(
-      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/versions`,
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/versions${qs ? `?${qs}` : ""}`,
+      {},
+      { auth: true },
+    );
+  }
+
+  diffEntryVersions(
+    apiId: string,
+    entryId: string,
+    from: string,
+    to: string,
+  ) {
+    const search = new URLSearchParams({ from, to });
+    return this.request<{
+      from: string;
+      to: string;
+      changes: SnapshotDiffChange[];
+    }>(
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/versions/diff?${search}`,
       {},
       { auth: true },
     );
@@ -744,6 +773,72 @@ export class CmsClient {
     return this.request<{ entry: FlatEntry; restoredFrom: EntryVersion }>(
       `/api/v1/admin/content-types/${apiId}/entries/${entryId}/versions/${versionId}/restore`,
       { method: "POST" },
+      { auth: true },
+    );
+  }
+
+  listContentTypeVersions(
+    apiId: string,
+    params?: { limit?: number; offset?: number },
+  ) {
+    const search = new URLSearchParams();
+    if (params?.limit != null) search.set("limit", String(params.limit));
+    if (params?.offset != null) search.set("offset", String(params.offset));
+    const qs = search.toString();
+    return this.request<ContentTypeVersion[]>(
+      `/api/v1/admin/content-types/${apiId}/versions${qs ? `?${qs}` : ""}`,
+      {},
+      { auth: true },
+    );
+  }
+
+  diffContentTypeVersions(apiId: string, from: string, to: string) {
+    const search = new URLSearchParams({ from, to });
+    return this.request<{
+      from: string;
+      to: string;
+      changes: SnapshotDiffChange[];
+    }>(
+      `/api/v1/admin/content-types/${apiId}/versions/diff?${search}`,
+      {},
+      { auth: true },
+    );
+  }
+
+  createContentTypeVersion(apiId: string, input?: { label?: string }) {
+    return this.request<ContentTypeVersion>(
+      `/api/v1/admin/content-types/${apiId}/versions`,
+      { method: "POST", body: JSON.stringify(input ?? {}) },
+      { auth: true },
+    );
+  }
+
+  restoreContentTypeVersion(apiId: string, versionId: string) {
+    return this.request<{
+      contentType: ContentType;
+      restoredFrom: ContentTypeVersion;
+    }>(
+      `/api/v1/admin/content-types/${apiId}/versions/${versionId}/restore`,
+      { method: "POST" },
+      { auth: true },
+    );
+  }
+
+  listAuditEvents(params?: {
+    resourceType?: string;
+    resourceId?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const search = new URLSearchParams();
+    if (params?.resourceType) search.set("resourceType", params.resourceType);
+    if (params?.resourceId) search.set("resourceId", params.resourceId);
+    if (params?.limit != null) search.set("limit", String(params.limit));
+    if (params?.offset != null) search.set("offset", String(params.offset));
+    const qs = search.toString();
+    return this.request<AuditEvent[]>(
+      `/api/v1/admin/audit-events${qs ? `?${qs}` : ""}`,
+      {},
       { auth: true },
     );
   }

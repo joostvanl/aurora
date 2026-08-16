@@ -101,10 +101,69 @@ export const EntryVersionSchema = z.object({
   label: z.string().nullable(),
   source: z.string(),
   snapshot: EntrySnapshotSchema,
+  createdByUserId: z.string().nullable().optional(),
+  actorKind: z.string().nullable().optional(),
+  changeSummary: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 
 export type EntryVersion = z.infer<typeof EntryVersionSchema>;
+
+export const ContentTypeFieldSnapshotSchema = z.object({
+  apiId: z.string(),
+  name: z.string(),
+  type: z.string(),
+  required: z.boolean(),
+  sortOrder: z.number(),
+  settings: z.unknown().nullable().optional(),
+});
+
+export const ContentTypeSnapshotSchema = z.object({
+  apiId: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  localizationMode: z.string(),
+  fields: z.array(ContentTypeFieldSnapshotSchema),
+});
+
+export type ContentTypeSnapshot = z.infer<typeof ContentTypeSnapshotSchema>;
+
+export const ContentTypeVersionSchema = z.object({
+  id: z.string(),
+  contentTypeId: z.string(),
+  label: z.string().nullable(),
+  source: z.string(),
+  snapshot: ContentTypeSnapshotSchema,
+  createdByUserId: z.string().nullable().optional(),
+  actorKind: z.string().nullable().optional(),
+  changeSummary: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+
+export type ContentTypeVersion = z.infer<typeof ContentTypeVersionSchema>;
+
+export const SnapshotDiffChangeSchema = z.object({
+  path: z.string(),
+  before: z.unknown(),
+  after: z.unknown(),
+});
+
+export type SnapshotDiffChange = z.infer<typeof SnapshotDiffChangeSchema>;
+
+export const AuditEventSchema = z.object({
+  id: z.string(),
+  websiteId: z.string(),
+  actorUserId: z.string().nullable(),
+  actorKind: z.string(),
+  action: z.string(),
+  resourceType: z.string(),
+  resourceId: z.string(),
+  summary: z.string(),
+  meta: z.unknown().nullable().optional(),
+  createdAt: z.string(),
+});
+
+export type AuditEvent = z.infer<typeof AuditEventSchema>;
 
 /** Per-website custom AI dock macro (name + prompt). */
 export const AiMacroSchema = z.object({
