@@ -13,9 +13,37 @@ describe("messageConfirmsSchemaChange", () => {
     expect(messageConfirmsSchemaChange("yes go ahead")).toBe(true);
   });
 
+  it("accepts natural approvals with commas / extra words (CMS-41)", () => {
+    for (const msg of [
+      "ja, doe maar",
+      "ja graag",
+      "ja hoor",
+      "ja, ga je gang",
+      "ga je gang",
+      "prima doe dat",
+      "top",
+      "is goed",
+      "helemaal goed",
+      "go for it",
+      "yes please do it",
+      "doe maar",
+      "voer het door",
+    ]) {
+      expect(messageConfirmsSchemaChange(msg)).toBe(true);
+    }
+  });
+
   it("rejects unrelated messages", () => {
     expect(messageConfirmsSchemaChange("voeg een titel toe")).toBe(false);
     expect(messageConfirmsSchemaChange("wat is een content type?")).toBe(false);
+  });
+
+  it("rejects ambivalent / questioning replies", () => {
+    expect(messageConfirmsSchemaChange("ja maar niet het body veld")).toBe(
+      false,
+    );
+    expect(messageConfirmsSchemaChange("ja, waarom?")).toBe(false);
+    expect(messageConfirmsSchemaChange("doe maar niet")).toBe(false);
   });
 });
 
@@ -30,6 +58,16 @@ describe("userConfirmedSchemaChange sticky history", () => {
         { role: "assistant", content: "Mag ik field title aanmaken?" },
         { role: "user", content: "ja" },
         { role: "assistant", content: "Title aangemaakt. Nu body?" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("reuses a natural-language approval from history (CMS-41)", () => {
+    expect(
+      userConfirmedSchemaChange("en nu een prijs-veld", [
+        { role: "assistant", content: "Zal ik content type product aanmaken?" },
+        { role: "user", content: "ja, doe maar" },
+        { role: "assistant", content: "Product aangemaakt. Nog velden?" },
       ]),
     ).toBe(true);
   });
