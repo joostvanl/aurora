@@ -208,12 +208,19 @@ Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `
 
 Password verify endpoints are **management-only** (not available with `x-site-key`). Use them from a trusted backend (e.g. TraceAI `POST /v1/ui/login/verify`) so frontends never see hashes or management tokens.
 
-### Versions & AI
+### Versions, audit & AI
+
+Entry and content-type mutations create immutable JSON snapshots (`source`: `auto` | `manual` | `ai` | `restore`). Restore never deletes history (pre-restore checkpoint first). Field-level compare via `.../versions/diff?from=&to=`. Append-only audit: `GET /api/v1/admin/audit-events`.
 
 | Path | Purpose |
 |------|---------|
-| `.../entries/:entryId/versions` | List / create checkpoints |
-| `.../versions/:versionId/restore` | Restore |
+| `.../entries/:entryId/versions` | List (paginated) / create checkpoints |
+| `.../entries/:entryId/versions/diff?from=&to=` | Field-level entry diff |
+| `.../entries/:entryId/versions/:versionId/restore` | Restore entry |
+| `.../content-types/:apiId/versions` | List / create schema checkpoints |
+| `.../content-types/:apiId/versions/diff?from=&to=` | Schema field-level diff |
+| `.../content-types/:apiId/versions/:versionId/restore` | Restore schema (blocks unsafe type changes with values) |
+| `/api/v1/admin/audit-events` | List audit events (`resourceType`, `resourceId`, pagination) |
 | `/api/v1/admin/ai/*` | Per-account AI operator |
 
 ### Scheduled tasks (Taken)

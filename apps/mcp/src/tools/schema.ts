@@ -165,4 +165,37 @@ export function registerSchemaTools(server: McpServer, ctx: McpContext) {
       }
     },
   );
+
+  server.tool(
+    "list_content_type_versions",
+    "List content-type schema versions (newest first).",
+    {
+      apiId: z.string().min(1),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
+    async ({ apiId, limit, offset }) => {
+      try {
+        return toolOk(await client.listContentTypeVersions(apiId, { limit, offset }));
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
+    "restore_content_type_version",
+    "Restore a content-type schema version (checkpoints current schema first).",
+    {
+      apiId: z.string().min(1),
+      versionId: z.string().min(1),
+    },
+    async ({ apiId, versionId }) => {
+      try {
+        return toolOk(await client.restoreContentTypeVersion(apiId, versionId));
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
 }

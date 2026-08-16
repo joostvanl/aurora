@@ -40,6 +40,16 @@ import {
   listEntryVersions,
   restoreEntryVersion,
 } from "../lib/versions.js";
+import {
+  createContentTypeVersion,
+  listContentTypeVersions,
+  restoreContentTypeVersion,
+} from "../lib/contentTypeVersions.js";
+import { listAuditEvents, recordAuditEvent } from "../lib/audit.js";
+import {
+  diffContentTypeSnapshots,
+  diffEntrySnapshots,
+} from "../lib/snapshotDiff.js";
 import { listEntriesOrdered } from "../lib/listEntries.js";
 import { httpError } from "../lib/httpError.js";
 import { mintPreviewToken, verifyPreviewToken } from "../lib/preview.js";
@@ -375,6 +385,23 @@ export async function registerRoutes(app: FastifyInstance) {
         },
         include: { fields: { orderBy: { sortOrder: "asc" } } },
       });
+      const actorUserId = asCreatedByUserId(userIdFrom(request));
+      const version = await createContentTypeVersion({
+        contentTypeId: ct.id,
+        source: "auto",
+        label: "Created",
+        createdByUserId: actorUserId,
+        changeSummary: "Content type created",
+      });
+      await recordAuditEvent({
+        websiteId,
+        actorUserId,
+        action: "content_type.create",
+        resourceType: "content_type",
+        resourceId: ct.id,
+        summary: `Created content type ${ct.apiId}`,
+        meta: { versionId: version.id },
+      });
       return serializeContentType(ct);
     });
 
@@ -398,6 +425,22 @@ export async function registerRoutes(app: FastifyInstance) {
           },
           include: { fields: { orderBy: { sortOrder: "asc" } } },
         });
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createContentTypeVersion({
+          contentTypeId: ct.id,
+          source: "auto",
+          createdByUserId: actorUserId,
+          changeSummary: "Content type updated",
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "content_type.update",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Updated content type ${ct.apiId}`,
+          meta: { versionId: version.id },
+        });
         return serializeContentType(ct);
       },
     );
@@ -408,6 +451,19 @@ export async function registerRoutes(app: FastifyInstance) {
         assertBuilder(request);
         const websiteId = websiteIdFrom(request);
         await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const existing = await prisma.contentType.findUnique({
+          where: { websiteId_apiId: { websiteId, apiId: request.params.apiId } },
+        });
+        if (!existing) throw httpError(404, "Content type not found");
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "content_type.delete",
+          resourceType: "content_type",
+          resourceId: existing.id,
+          summary: `Deleted content type ${existing.apiId}`,
+        });
         await prisma.contentType.delete({
           where: { websiteId_apiId: { websiteId, apiId: request.params.apiId } },
         });
@@ -451,6 +507,22 @@ export async function registerRoutes(app: FastifyInstance) {
           throw httpError(409, `Field "${body.apiId}" already exists`);
         }
         const updated = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createContentTypeVersion({
+          contentTypeId: updated.id,
+          source: "auto",
+          createdByUserId: actorUserId,
+          changeSummary: `Field ${body.apiId} created`,
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "field.create",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Created field ${body.apiId} on ${updated.apiId}`,
+          meta: { versionId: version.id, fieldApiId: body.apiId },
+        });
         return serializeContentType(updated);
       },
     );
@@ -493,6 +565,25 @@ export async function registerRoutes(app: FastifyInstance) {
           },
         });
         const updated = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createContentTypeVersion({
+          contentTypeId: updated.id,
+          source: "auto",
+          createdByUserId: actorUserId,
+          changeSummary: `Field ${request.params.fieldApiId} updated`,
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "field.update",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Updated field ${request.params.fieldApiId} on ${updated.apiId}`,
+          meta: {
+            versionId: version.id,
+            fieldApiId: request.params.fieldApiId,
+          },
+        });
         return serializeContentType(updated);
       },
     );
@@ -507,6 +598,25 @@ export async function registerRoutes(app: FastifyInstance) {
         if (!field) throw httpError(404, "Field not found");
         await prisma.fieldDefinition.delete({ where: { id: field.id } });
         const updated = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createContentTypeVersion({
+          contentTypeId: updated.id,
+          source: "auto",
+          createdByUserId: actorUserId,
+          changeSummary: `Field ${request.params.fieldApiId} deleted`,
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "field.delete",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Deleted field ${request.params.fieldApiId} on ${updated.apiId}`,
+          meta: {
+            versionId: version.id,
+            fieldApiId: request.params.fieldApiId,
+          },
+        });
         return serializeContentType(updated);
       },
     );
@@ -705,6 +815,23 @@ export async function registerRoutes(app: FastifyInstance) {
           include: entryInclude,
         });
 
+        const version = await createEntryVersion({
+          entryId: full.id,
+          source: "auto",
+          label: "Created",
+          createdByUserId,
+          changeSummary: "Entry created",
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId: createdByUserId,
+          action: "entry.create",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Created entry ${full.slug}`,
+          meta: { versionId: version.id, contentTypeApiId: ct.apiId },
+        });
+
         await hooks.emit("onEntryCreate", {
           entryId: full.id,
           contentTypeApiId: ct.apiId,
@@ -822,9 +949,27 @@ export async function registerRoutes(app: FastifyInstance) {
           );
         }
 
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createEntryVersion({
+          entryId: existing.id,
+          source: "auto",
+          createdByUserId: actorUserId,
+          changeSummary: "Entry updated",
+        });
+
         const full = await prisma.entry.findUniqueOrThrow({
           where: { id: existing.id },
           include: entryInclude,
+        });
+
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.update",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Updated entry ${full.slug}`,
+          meta: { versionId: version.id, contentTypeApiId: ct.apiId },
         });
 
         await hooks.emit("onEntryUpdate", {
@@ -846,12 +991,25 @@ export async function registerRoutes(app: FastifyInstance) {
           where: { id: request.params.entryId, contentTypeId: ct.id },
         });
         if (!existing) throw httpError(404, "Entry not found");
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.delete",
+          resourceType: "entry",
+          resourceId: existing.id,
+          summary: `Deleted entry ${existing.slug}`,
+          meta: { contentTypeApiId: ct.apiId },
+        });
         await prisma.entry.delete({ where: { id: existing.id } });
         return { ok: true as const };
       },
     );
 
-    admin.get<{ Params: { apiId: string; entryId: string } }>(
+    admin.get<{
+      Params: { apiId: string; entryId: string };
+      Querystring: { limit?: string; offset?: string };
+    }>(
       "/api/v1/admin/content-types/:apiId/entries/:entryId/versions",
       async (request) => {
         const websiteId = websiteIdFrom(request);
@@ -860,7 +1018,60 @@ export async function registerRoutes(app: FastifyInstance) {
           where: { id: request.params.entryId, contentTypeId: ct.id },
         });
         if (!existing) throw httpError(404, "Entry not found");
-        return listEntryVersions(existing.id);
+        const limit = request.query.limit
+          ? Number(request.query.limit)
+          : undefined;
+        const offset = request.query.offset
+          ? Number(request.query.offset)
+          : undefined;
+        return listEntryVersions(existing.id, { limit, offset });
+      },
+    );
+
+    admin.get<{
+      Params: { apiId: string; entryId: string };
+      Querystring: { from?: string; to?: string };
+    }>(
+      "/api/v1/admin/content-types/:apiId/entries/:entryId/versions/diff",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const existing = await prisma.entry.findFirst({
+          where: { id: request.params.entryId, contentTypeId: ct.id },
+        });
+        if (!existing) throw httpError(404, "Entry not found");
+        const fromId = request.query.from;
+        const toId = request.query.to;
+        if (!fromId || !toId) {
+          throw httpError(400, "Query params from and to are required", "VALIDATION_FAILED");
+        }
+        const [from, to] = await Promise.all([
+          prisma.entryVersion.findFirst({
+            where: { id: fromId, entryId: existing.id },
+          }),
+          prisma.entryVersion.findFirst({
+            where: { id: toId, entryId: existing.id },
+          }),
+        ]);
+        if (!from || !to) throw httpError(404, "Version not found");
+        return {
+          from: from.id,
+          to: to.id,
+          changes: diffEntrySnapshots(
+            from.snapshot as {
+              slug: string;
+              status: string;
+              locale: string;
+              fields: Record<string, unknown>;
+            },
+            to.snapshot as {
+              slug: string;
+              status: string;
+              locale: string;
+              fields: Record<string, unknown>;
+            },
+          ),
+        };
       },
     );
 
@@ -880,11 +1091,23 @@ export async function registerRoutes(app: FastifyInstance) {
           typeof request.body?.label === "string"
             ? request.body.label
             : "Manual checkpoint";
-        return createEntryVersion({
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createEntryVersion({
           entryId: existing.id,
           label,
           source: "manual",
+          createdByUserId: actorUserId,
         });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.version.create",
+          resourceType: "entry",
+          resourceId: existing.id,
+          summary: `Manual checkpoint on ${existing.slug}`,
+          meta: { versionId: version.id },
+        });
+        return version;
       },
     );
 
@@ -899,13 +1122,180 @@ export async function registerRoutes(app: FastifyInstance) {
           where: { id: request.params.entryId, contentTypeId: ct.id },
         });
         if (!existing) throw httpError(404, "Entry not found");
-        return restoreEntryVersion({
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const result = await restoreEntryVersion({
           contentTypeId: ct.id,
           entryId: existing.id,
           versionId: request.params.versionId,
+          createdByUserId: actorUserId,
         });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.restore",
+          resourceType: "entry",
+          resourceId: existing.id,
+          summary: `Restored entry ${existing.slug}`,
+          meta: { versionId: request.params.versionId },
+        });
+        return result;
       },
     );
+
+    admin.get<{
+      Params: { apiId: string };
+      Querystring: { limit?: string; offset?: string };
+    }>(
+      "/api/v1/admin/content-types/:apiId/versions",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const limit = request.query.limit
+          ? Number(request.query.limit)
+          : undefined;
+        const offset = request.query.offset
+          ? Number(request.query.offset)
+          : undefined;
+        return listContentTypeVersions(ct.id, { limit, offset });
+      },
+    );
+
+    admin.get<{
+      Params: { apiId: string };
+      Querystring: { from?: string; to?: string };
+    }>(
+      "/api/v1/admin/content-types/:apiId/versions/diff",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const fromId = request.query.from;
+        const toId = request.query.to;
+        if (!fromId || !toId) {
+          throw httpError(400, "Query params from and to are required", "VALIDATION_FAILED");
+        }
+        const [from, to] = await Promise.all([
+          prisma.contentTypeVersion.findFirst({
+            where: { id: fromId, contentTypeId: ct.id },
+          }),
+          prisma.contentTypeVersion.findFirst({
+            where: { id: toId, contentTypeId: ct.id },
+          }),
+        ]);
+        if (!from || !to) throw httpError(404, "Version not found");
+        return {
+          from: from.id,
+          to: to.id,
+          changes: diffContentTypeSnapshots(
+            from.snapshot as {
+              apiId: string;
+              name: string;
+              description: string | null;
+              localizationMode: string;
+              fields: Array<{
+                apiId: string;
+                name: string;
+                type: string;
+                required: boolean;
+                sortOrder: number;
+                settings: unknown;
+              }>;
+            },
+            to.snapshot as {
+              apiId: string;
+              name: string;
+              description: string | null;
+              localizationMode: string;
+              fields: Array<{
+                apiId: string;
+                name: string;
+                type: string;
+                required: boolean;
+                sortOrder: number;
+                settings: unknown;
+              }>;
+            },
+          ),
+        };
+      },
+    );
+
+    admin.post<{
+      Params: { apiId: string };
+      Body: { label?: string };
+    }>(
+      "/api/v1/admin/content-types/:apiId/versions",
+      async (request) => {
+        assertBuilder(request);
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const label =
+          typeof request.body?.label === "string"
+            ? request.body.label
+            : "Manual checkpoint";
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createContentTypeVersion({
+          contentTypeId: ct.id,
+          label,
+          source: "manual",
+          createdByUserId: actorUserId,
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "content_type.version.create",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Manual schema checkpoint on ${ct.apiId}`,
+          meta: { versionId: version.id },
+        });
+        return version;
+      },
+    );
+
+    admin.post<{
+      Params: { apiId: string; versionId: string };
+    }>(
+      "/api/v1/admin/content-types/:apiId/versions/:versionId/restore",
+      async (request) => {
+        assertBuilder(request);
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const result = await restoreContentTypeVersion({
+          contentTypeId: ct.id,
+          versionId: request.params.versionId,
+          createdByUserId: actorUserId,
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "content_type.restore",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Restored content type ${ct.apiId}`,
+          meta: { versionId: request.params.versionId },
+        });
+        return result;
+      },
+    );
+
+    admin.get<{
+      Querystring: {
+        resourceType?: string;
+        resourceId?: string;
+        limit?: string;
+        offset?: string;
+      };
+    }>("/api/v1/admin/audit-events", async (request) => {
+      const websiteId = websiteIdFrom(request);
+      return listAuditEvents({
+        websiteId,
+        resourceType: request.query.resourceType,
+        resourceId: request.query.resourceId,
+        limit: request.query.limit ? Number(request.query.limit) : undefined,
+        offset: request.query.offset ? Number(request.query.offset) : undefined,
+      });
+    });
 
     admin.post<{ Params: { apiId: string; entryId: string } }>(
       "/api/v1/admin/content-types/:apiId/entries/:entryId/publish",
@@ -924,6 +1314,24 @@ export async function registerRoutes(app: FastifyInstance) {
             publishedAt: existing.publishedAt ?? new Date(),
           },
           include: entryInclude,
+        });
+
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createEntryVersion({
+          entryId: full.id,
+          source: "auto",
+          label: "Published",
+          createdByUserId: actorUserId,
+          changeSummary: "Published",
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.publish",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Published entry ${full.slug}`,
+          meta: { versionId: version.id, contentTypeApiId: ct.apiId },
         });
 
         await hooks.emit("onEntryPublish", {
@@ -950,6 +1358,24 @@ export async function registerRoutes(app: FastifyInstance) {
           where: { id: existing.id },
           data: { status: EntryStatus.draft, publishedAt: null },
           include: entryInclude,
+        });
+
+        const actorUserId = asCreatedByUserId(userIdFrom(request));
+        const version = await createEntryVersion({
+          entryId: full.id,
+          source: "auto",
+          label: "Unpublished",
+          createdByUserId: actorUserId,
+          changeSummary: "Unpublished",
+        });
+        await recordAuditEvent({
+          websiteId,
+          actorUserId,
+          action: "entry.unpublish",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Unpublished entry ${full.slug}`,
+          meta: { versionId: version.id, contentTypeApiId: ct.apiId },
         });
 
         await hooks.emit("onEntryUnpublish", {
