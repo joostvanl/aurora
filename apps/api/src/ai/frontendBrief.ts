@@ -148,17 +148,16 @@ export function mergeFrontendBrief(reply: string, brief: string): string {
 }
 
 /**
- * True when the latest user message clearly approves a pending structural change.
- * Used to gate content-type / field mutations.
+ * True when a single message clearly approves a pending structural change.
  */
-export function userConfirmedSchemaChange(message: string): boolean {
+export function messageConfirmsSchemaChange(message: string): boolean {
   const text = message.trim().toLowerCase();
   if (!text) return false;
 
   // Explicit approval phrases (NL + EN). Short confirmations after a proposal, or
   // approval combined with the structural request in one message.
   return (
-    /^(ja|yes|yep|yeah|ok|okay|akkoord|prima|goed|sure|do it|go ahead|proceed|bevestig|bevestigd|approved?|lgtm)\b[.!]*$/i.test(
+    /^(ja|yes|yep|yeah|ok|okay|akkoord|prima|goed|sure|do it|go ahead|proceed|bevestig|bevestigd|approved?|lgtm)(\s+(go ahead|doe maar|voer door|please))?\b[.!]*$/i.test(
       text,
     ) ||
     /\b(ja|yes|ok|okay|akkoord|prima|sure|go\s+ahead|doe\s+maar|voer\s+(het\s+)?door|bevestig(d|ing)?|i\s+confirm|confirmed|approved?)\b[\s\S]{0,80}\b(create|add|delete|update|remove|maak|voeg|verwijder|wijzig|pas\s+aan|schema|content\s*type|veld|field)\b/i.test(
@@ -168,4 +167,37 @@ export function userConfirmedSchemaChange(message: string): boolean {
       text,
     )
   );
+}
+
+/** Explicit refusal of a pending schema change (clears sticky approval). */
+export function messageRejectsSchemaChange(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  if (!text) return false;
+  return /^(nee|no|nope|niet|stop|cancel|afkeuren|weiger|don't|do not)\b[.!]*$/i.test(
+    text,
+  );
+}
+
+/**
+ * True when the latest user message — or a recent prior user message in history —
+ * clearly approves a structural change. Sticky across follow-up turns so one
+ * "ja" covers a multi-tool schema batch (CMS-41). A later explicit refusal
+ * clears the sticky approval.
+ */
+export function userConfirmedSchemaChange(
+  message: string,
+  history?: Array<{ role: string; content: string }>,
+): boolean {
+  if (messageRejectsSchemaChange(message)) return false;
+  if (messageConfirmsSchemaChange(message)) return true;
+
+  const prior = history ?? [];
+  // Walk newest → oldest among recent messages; sticky approval until refusal.
+  for (let i = prior.length - 1; i >= 0; i--) {
+    const m = prior[i];
+    if (m.role !== "user") continue;
+    if (messageRejectsSchemaChange(m.content)) return false;
+    if (messageConfirmsSchemaChange(m.content)) return true;
+  }
+  return false;
 }
