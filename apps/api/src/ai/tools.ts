@@ -59,6 +59,44 @@ export const CONTENT_SCHEMA_TOOLS = new Set([
   "delete_field",
 ]);
 
+/** Entry-level tools that address existing content by contentTypeApiId. */
+export const ENTRY_CONTENT_TOOLS = new Set([
+  "create_entry",
+  "get_entry",
+  "list_entries",
+  "str_replace",
+  "write_field",
+  "publish_entry",
+  "unpublish_entry",
+  "delete_entry",
+]);
+
+/**
+ * Reserved / meta apiIds a model sometimes hallucinates (e.g. "__schema")
+ * when it means to change the content model instead of creating an entry.
+ */
+const PSEUDO_CONTENT_TYPE_API_IDS = new Set([
+  "schema",
+  "content_type",
+  "contenttype",
+  "content-type",
+  "content_types",
+  "contenttypes",
+  "field",
+  "fields",
+]);
+
+/** True when apiId is a meta/pseudo name that is never a real content type. */
+export function isPseudoContentTypeApiId(
+  apiId: string | undefined | null,
+): boolean {
+  if (!apiId) return false;
+  const normalized = apiId.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith("__")) return true;
+  return PSEUDO_CONTENT_TYPE_API_IDS.has(normalized);
+}
+
 /** Tools omitted / blocked for unattended scheduled-task runs (draft-only v1). */
 export const SCHEDULED_TASK_BLOCKED_TOOLS = new Set([
   "publish_entry",
@@ -836,9 +874,24 @@ export async function executeAiTool(
       name,
       ok: false,
       summary:
-        "Blocked: content-structure changes need explicit user approval first. Explain the planned content-type/field change, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead).",
+        "Blocked: content-structure changes need explicit user approval first. Explain the planned content-type/field change, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead). Do NOT work around this by using entry tools (create_entry/write_field) or by inventing a content type — wait for the user's confirmation.",
       data: { needsConfirmation: true, tool: name },
     };
+  }
+
+  if (ENTRY_CONTENT_TOOLS.has(name)) {
+    const requestedApiId = str(rawArgs, "contentTypeApiId");
+    if (isPseudoContentTypeApiId(requestedApiId)) {
+      return {
+        name,
+        ok: false,
+        summary:
+          `"${requestedApiId}" is not a content type. Entry tools like ${name} only work on real content types. ` +
+          "To change the content model (add/remove types or fields), use the schema tools create_content_type / create_field / update_field / delete_field instead. " +
+          "Call list_content_types to see which content types actually exist.",
+        data: { invalidContentTypeApiId: requestedApiId, tool: name },
+      };
+    }
   }
 
   try {
@@ -1712,10 +1765,28 @@ export async function executeAiTool(
           summary: `Unknown tool: ${name}`,
         };
     }  } catch (error) {
+    const apiCode =
+      error && typeof error === "object" && "apiCode" in error
+        ? (error as { apiCode?: string }).apiCode
+        : undefined;
+    let summary = error instanceof Error ? error.message : "Tool failed";
+    if (apiCode === "CONTENT_TYPE_NOT_FOUND" && ENTRY_CONTENT_TOOLS.has(name)) {
+      const available = await prisma.contentType.findMany({
+        where: { websiteId },
+        select: { apiId: true },
+        orderBy: { apiId: "asc" },
+        take: 20,
+      });
+      summary = available.length
+        ? `${summary}. Available content types on this website: ${available
+            .map((c) => c.apiId)
+            .join(", ")}. Use one of these apiIds, or use the schema tools (create_content_type / create_field) to change the content model.`
+        : `${summary}. This website has no content types yet. Use create_content_type to add one before creating entries.`;
+    }
     return {
       name,
       ok: false,
-      summary: error instanceof Error ? error.message : "Tool failed",
+      summary,
     };
   }
 }
