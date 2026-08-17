@@ -26,6 +26,10 @@ import {
   getWebsiteLocales,
 } from "../lib/locales.js";
 import { createAllLocaleSiblings } from "../lib/translations.js";
+import {
+  serializeScheduledTask,
+  serializeScheduledTaskRun,
+} from "../scheduledTasks/serialize.js";
 import { applyStrReplace } from "./patches.js";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
@@ -101,6 +105,16 @@ export function isPseudoContentTypeApiId(
 export const SCHEDULED_TASK_BLOCKED_TOOLS = new Set([
   "publish_entry",
   "unpublish_entry",
+]);
+
+/**
+ * Read-only scheduled-task inspection (builder+). Available in studio chat only —
+ * omitted from unattended scheduled_task runs to avoid self-inspection loops.
+ */
+export const SCHEDULED_TASK_INSPECT_TOOLS = new Set([
+  "list_scheduled_tasks",
+  "get_scheduled_task",
+  "list_scheduled_task_runs",
 ]);
 
 export type ToolResult = {
@@ -787,6 +801,68 @@ export const aiTools: ChatTool[] = [
   {
     type: "function",
     function: {
+      name: "list_scheduled_tasks",
+      description:
+        "List scheduled tasks for this website (id, name, enabled, schedule, next/last run, lastStatus). Use before analysing a specific task. Requires builder or admin. Does not create or change tasks.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_scheduled_task",
+      description:
+        "Load one scheduled task by id or exact name, including prompt, schedule, caps, lastError, and recent runs (summary, reply, ok, tokens, tools, stoppedReason). Use to explain what a task does or why a run failed. Requires builder or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Task id (preferred when known).",
+          },
+          name: {
+            type: "string",
+            description: "Exact task name when id is unknown.",
+          },
+          runLimit: {
+            type: "number",
+            description: "Max recent runs to include (default 10, max 20).",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_scheduled_task_runs",
+      description:
+        "List recent runs for a scheduled task (ok, summary, full reply, tokens, tool counts, stoppedReason, timestamps). Prefer get_scheduled_task first; use this when you need more runs than the default. Requires builder or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          taskName: {
+            type: "string",
+            description: "Exact task name if taskId is unknown.",
+          },
+          limit: {
+            type: "number",
+            description: "Number of runs (default 5, max 20).",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "get_current_datetime",
       description:
         "Return the authoritative server current date/time in UTC and the agent local timezone (CMS_AGENT_TIMEZONE, default Europe/Amsterdam). Prefer the Current date/time block already in the system prompt; call this only when you need a refreshed clock mid-conversation.",
@@ -810,14 +886,23 @@ export function aiToolsForSource(
 ): ChatTool[] {
   let tools = aiTools;
 
-  if (source === "scheduled_task" && !opts?.allowPublish) {
+  if (source === "scheduled_task") {
     tools = tools.filter(
-      (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
+      (t) => !SCHEDULED_TASK_INSPECT_TOOLS.has(t.function.name),
     );
+    if (!opts?.allowPublish) {
+      tools = tools.filter(
+        (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
+      );
+    }
   }
 
   if (opts?.role && !roleAtLeast(opts.role, RolePermission.schema)) {
-    tools = tools.filter((t) => !SCHEMA_TOOLS.has(t.function.name));
+    tools = tools.filter(
+      (t) =>
+        !SCHEMA_TOOLS.has(t.function.name) &&
+        !SCHEDULED_TASK_INSPECT_TOOLS.has(t.function.name),
+    );
   }
 
   const domains = resolveToolDomains(opts?.context, source);
@@ -861,7 +946,30 @@ export async function executeAiTool(
     };
   }
 
+  if (
+    ctx.source === "scheduled_task" &&
+    SCHEDULED_TASK_INSPECT_TOOLS.has(name)
+  ) {
+    return {
+      name,
+      ok: false,
+      summary:
+        "Blocked: scheduled task runs cannot inspect the task registry (avoid self-inspection loops).",
+    };
+  }
+
   if (SCHEMA_TOOLS.has(name) && !roleAtLeast(role, RolePermission.schema)) {
+    return {
+      name,
+      ok: false,
+      summary: `Permission denied: "${name}" requires builder or admin role`,
+    };
+  }
+
+  if (
+    SCHEDULED_TASK_INSPECT_TOOLS.has(name) &&
+    !roleAtLeast(role, RolePermission.schema)
+  ) {
     return {
       name,
       ok: false,
@@ -1748,6 +1856,123 @@ export async function executeAiTool(
           }
           throw error;
         }
+      }
+      case "list_scheduled_tasks": {
+        const items = await prisma.scheduledTask.findMany({
+          where: { websiteId },
+          orderBy: [{ nextRunAt: "asc" }, { createdAt: "desc" }],
+          select: {
+            id: true,
+            name: true,
+            enabled: true,
+            frequency: true,
+            timeOfDay: true,
+            timeZone: true,
+            nextRunAt: true,
+            lastRunAt: true,
+            lastStatus: true,
+            allowPublish: true,
+            prompt: true,
+          },
+        });
+        const data = items.map((t) => ({
+          id: t.id,
+          name: t.name,
+          enabled: t.enabled,
+          frequency: t.frequency,
+          timeOfDay: t.timeOfDay,
+          timeZone: t.timeZone,
+          nextRunAt: t.nextRunAt?.toISOString() ?? null,
+          lastRunAt: t.lastRunAt?.toISOString() ?? null,
+          lastStatus: t.lastStatus,
+          allowPublish: t.allowPublish,
+          promptPreview:
+            t.prompt.length > 160 ? `${t.prompt.slice(0, 159)}…` : t.prompt,
+        }));
+        return {
+          name,
+          ok: true,
+          summary: `Listed ${data.length} scheduled task(s)`,
+          data,
+        };
+      }
+      case "get_scheduled_task": {
+        const id = str(rawArgs, "id");
+        const taskName = str(rawArgs, "name");
+        if (!id && !taskName) {
+          throw new Error("id or name required");
+        }
+        const runLimit = Math.min(
+          Math.max(1, Math.floor(num(rawArgs, "runLimit") ?? 10)),
+          20,
+        );
+        const task = await prisma.scheduledTask.findFirst({
+          where: {
+            websiteId,
+            ...(id ? { id } : { name: taskName }),
+          },
+          include: {
+            runs: { orderBy: { startedAt: "desc" }, take: runLimit },
+          },
+        });
+        if (!task) {
+          return {
+            name,
+            ok: false,
+            summary: id
+              ? `Scheduled task "${id}" not found`
+              : `Scheduled task named "${taskName}" not found`,
+          };
+        }
+        const data = serializeScheduledTask(task, task.runs);
+        return {
+          name,
+          ok: true,
+          summary: `Loaded task "${task.name}" (${task.runs.length} recent run(s))`,
+          data,
+        };
+      }
+      case "list_scheduled_task_runs": {
+        const taskId = str(rawArgs, "taskId");
+        const taskName = str(rawArgs, "taskName");
+        if (!taskId && !taskName) {
+          throw new Error("taskId or taskName required");
+        }
+        const limit = Math.min(
+          Math.max(1, Math.floor(num(rawArgs, "limit") ?? 5)),
+          20,
+        );
+        const task = await prisma.scheduledTask.findFirst({
+          where: {
+            websiteId,
+            ...(taskId ? { id: taskId } : { name: taskName }),
+          },
+          select: { id: true, name: true },
+        });
+        if (!task) {
+          return {
+            name,
+            ok: false,
+            summary: taskId
+              ? `Scheduled task "${taskId}" not found`
+              : `Scheduled task named "${taskName}" not found`,
+          };
+        }
+        const runs = await prisma.scheduledTaskRun.findMany({
+          where: { taskId: task.id },
+          orderBy: { startedAt: "desc" },
+          take: limit,
+        });
+        return {
+          name,
+          ok: true,
+          summary: `Listed ${runs.length} run(s) for "${task.name}"`,
+          data: {
+            taskId: task.id,
+            taskName: task.name,
+            runs: runs.map(serializeScheduledTaskRun),
+          },
+        };
       }
       case "get_current_datetime": {
         const data = getCurrentDateTime();

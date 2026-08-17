@@ -24,11 +24,19 @@ describe("scheduled_task tool policy", () => {
     expect(names).not.toContain("create_content_type");
   });
 
+  it("omits inspect tools from the scheduled_task tool list", () => {
+    const names = aiToolsForSource("scheduled_task").map((t) => t.function.name);
+    expect(names).not.toContain("list_scheduled_tasks");
+    expect(names).not.toContain("get_scheduled_task");
+    expect(names).not.toContain("list_scheduled_task_runs");
+  });
+
   it("keeps publish tools for normal chat", () => {
     const names = aiToolsForSource("chat").map((t) => t.function.name);
     expect(names).toContain("publish_entry");
     expect(names).toContain("unpublish_entry");
     expect(names).toContain("list_forms");
+    expect(names).toContain("list_scheduled_tasks");
   });
 
   it("lists blocked tool names", () => {
