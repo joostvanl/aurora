@@ -9,6 +9,7 @@ const SCHEMA_TOOL_NAMES = new Set([
   "create_field",
   "update_field",
   "delete_field",
+  "list_content_type_versions",
 ]);
 
 const FORMS_TOOL_NAMES = new Set([

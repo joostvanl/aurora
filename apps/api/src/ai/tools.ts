@@ -36,8 +36,15 @@ import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 import { getCurrentDateTime } from "./currentTime.js";
 import { resolveToolDomains, toolDomain } from "./toolScope.js";
 import type { AiChatContext } from "@cms/shared";
+import { listAuditEvents } from "../lib/audit.js";
+import { listContentTypeVersions } from "../lib/contentTypeVersions.js";
+import {
+  diffContentTypeSnapshots,
+  diffEntrySnapshots,
+} from "../lib/snapshotDiff.js";
+import { listEntryVersions } from "../lib/versions.js";
 
-/** Schema-mutating tools require builder+; everything else is content (editor+). */
+/** Schema tools require builder+ (mutations + schema version reads); else content (editor+). */
 export const SCHEMA_TOOLS = new Set([
   "create_content_type",
   "update_content_type",
@@ -45,6 +52,7 @@ export const SCHEMA_TOOLS = new Set([
   "create_field",
   "update_field",
   "delete_field",
+  "list_content_type_versions",
   "create_form",
   "update_form",
   "delete_form",
@@ -52,6 +60,25 @@ export const SCHEMA_TOOLS = new Set([
   "update_form_field",
   "delete_form_field",
 ]);
+
+/** Compact version list row — omit full snapshots for context budget. */
+function compactVersionMeta(row: {
+  id: string;
+  label: string | null;
+  source: string;
+  actorKind: string | null;
+  changeSummary: string | null;
+  createdAt: string;
+}) {
+  return {
+    id: row.id,
+    label: row.label,
+    source: row.source,
+    actorKind: row.actorKind,
+    changeSummary: row.changeSummary,
+    createdAt: row.createdAt,
+  };
+}
 
 /** Content-model tools that affect how a frontend should render CMS data. */
 export const CONTENT_SCHEMA_TOOLS = new Set([
@@ -878,6 +905,118 @@ export const aiTools: ChatTool[] = [
       parameters: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_entry_versions",
+      description:
+        "List immutable entry versions (newest first): id, label, source, actorKind, changeSummary, createdAt. Does not return full snapshots — use diff_versions to compare two versions. Scope: this website only.",
+      parameters: {
+        type: "object",
+        properties: {
+          apiId: {
+            type: "string",
+            description: "Content type apiId.",
+          },
+          entryId: { type: "string" },
+          limit: {
+            type: "number",
+            description: "Max versions (default 50, max 100).",
+          },
+          offset: {
+            type: "number",
+            description: "Pagination offset (default 0).",
+          },
+        },
+        required: ["apiId", "entryId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_content_type_versions",
+      description:
+        "List immutable content-type (schema) versions (newest first): id, label, source, actorKind, changeSummary, createdAt. No full snapshots — use diff_versions. Requires builder or admin. Scope: this website only.",
+      parameters: {
+        type: "object",
+        properties: {
+          apiId: {
+            type: "string",
+            description: "Content type apiId.",
+          },
+          limit: {
+            type: "number",
+            description: "Max versions (default 50, max 100).",
+          },
+          offset: {
+            type: "number",
+            description: "Pagination offset (default 0).",
+          },
+        },
+        required: ["apiId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "diff_versions",
+      description:
+        "Field-level diff between two version snapshots (entry or content type). Returns path/before/after changes. Both version ids must belong to the same scoped resource on this website.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["entry", "content_type"],
+            description: "Which version table to compare.",
+          },
+          apiId: {
+            type: "string",
+            description: "Content type apiId (scopes to this website).",
+          },
+          entryId: {
+            type: "string",
+            description: "Required when kind is entry.",
+          },
+          fromVersionId: { type: "string" },
+          toVersionId: { type: "string" },
+        },
+        required: ["kind", "apiId", "fromVersionId", "toVersionId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_audit_events",
+      description:
+        "List audit trail events for this website (newest first). Optionally filter by resourceType and resourceId. Use for who/when questions; never invent actors or timestamps.",
+      parameters: {
+        type: "object",
+        properties: {
+          resourceType: {
+            type: "string",
+            description: 'e.g. "entry", "content_type".',
+          },
+          resourceId: { type: "string" },
+          limit: {
+            type: "number",
+            description: "Max events (default 50, max 100).",
+          },
+          offset: {
+            type: "number",
+            description: "Pagination offset (default 0).",
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -2079,6 +2218,186 @@ export async function executeAiTool(
           name,
           ok: true,
           summary: `Now ${data.localDisplay} (${data.timeZone})`,
+          data,
+        };
+      }
+      case "list_entry_versions": {
+        const apiId = str(rawArgs, "apiId");
+        const entryId = str(rawArgs, "entryId");
+        if (!apiId || !entryId) throw new Error("apiId and entryId required");
+        const ct = await getContentTypeOrThrow(apiId, websiteId);
+        const existing = await prisma.entry.findFirst({
+          where: { id: entryId, contentTypeId: ct.id },
+        });
+        if (!existing) {
+          return { name, ok: false, summary: `Entry "${entryId}" not found` };
+        }
+        const versions = await listEntryVersions(existing.id, {
+          limit: num(rawArgs, "limit"),
+          offset: num(rawArgs, "offset"),
+        });
+        const data = versions.map(compactVersionMeta);
+        return {
+          name,
+          ok: true,
+          summary: `Listed ${data.length} version(s) for entry ${existing.slug}`,
+          data,
+        };
+      }
+      case "list_content_type_versions": {
+        const apiId = str(rawArgs, "apiId");
+        if (!apiId) throw new Error("apiId required");
+        const ct = await getContentTypeOrThrow(apiId, websiteId);
+        const versions = await listContentTypeVersions(ct.id, {
+          limit: num(rawArgs, "limit"),
+          offset: num(rawArgs, "offset"),
+        });
+        const data = versions.map(compactVersionMeta);
+        return {
+          name,
+          ok: true,
+          summary: `Listed ${data.length} schema version(s) for ${apiId}`,
+          data,
+        };
+      }
+      case "diff_versions": {
+        const kind = str(rawArgs, "kind");
+        const apiId = str(rawArgs, "apiId");
+        const fromVersionId = str(rawArgs, "fromVersionId");
+        const toVersionId = str(rawArgs, "toVersionId");
+        if (!kind || !apiId || !fromVersionId || !toVersionId) {
+          throw new Error(
+            "kind, apiId, fromVersionId, and toVersionId required",
+          );
+        }
+        if (kind !== "entry" && kind !== "content_type") {
+          throw new Error('kind must be "entry" or "content_type"');
+        }
+        if (
+          kind === "content_type" &&
+          !roleAtLeast(role, RolePermission.schema)
+        ) {
+          return {
+            name,
+            ok: false,
+            summary:
+              'Permission denied: content_type diffs require builder or admin role',
+          };
+        }
+        const ct = await getContentTypeOrThrow(apiId, websiteId);
+
+        if (kind === "entry") {
+          const entryId = str(rawArgs, "entryId");
+          if (!entryId) throw new Error("entryId required when kind is entry");
+          const existing = await prisma.entry.findFirst({
+            where: { id: entryId, contentTypeId: ct.id },
+          });
+          if (!existing) {
+            return { name, ok: false, summary: `Entry "${entryId}" not found` };
+          }
+          const [from, to] = await Promise.all([
+            prisma.entryVersion.findFirst({
+              where: { id: fromVersionId, entryId: existing.id },
+            }),
+            prisma.entryVersion.findFirst({
+              where: { id: toVersionId, entryId: existing.id },
+            }),
+          ]);
+          if (!from || !to) {
+            return { name, ok: false, summary: "Version not found" };
+          }
+          const changes = diffEntrySnapshots(
+            from.snapshot as {
+              slug?: string;
+              status?: string;
+              locale?: string;
+              fields?: Record<string, unknown>;
+            },
+            to.snapshot as {
+              slug?: string;
+              status?: string;
+              locale?: string;
+              fields?: Record<string, unknown>;
+            },
+          );
+          return {
+            name,
+            ok: true,
+            summary: `Diff entry versions: ${changes.length} change(s)`,
+            data: { kind, from: from.id, to: to.id, changes },
+          };
+        }
+
+        const [from, to] = await Promise.all([
+          prisma.contentTypeVersion.findFirst({
+            where: { id: fromVersionId, contentTypeId: ct.id },
+          }),
+          prisma.contentTypeVersion.findFirst({
+            where: { id: toVersionId, contentTypeId: ct.id },
+          }),
+        ]);
+        if (!from || !to) {
+          return { name, ok: false, summary: "Version not found" };
+        }
+        const changes = diffContentTypeSnapshots(
+          from.snapshot as {
+            apiId?: string;
+            name?: string;
+            description?: string | null;
+            localizationMode?: string;
+            fields?: Array<{
+              apiId: string;
+              name?: string;
+              type?: string;
+              required?: boolean;
+              sortOrder?: number;
+              settings?: unknown;
+            }>;
+          },
+          to.snapshot as {
+            apiId?: string;
+            name?: string;
+            description?: string | null;
+            localizationMode?: string;
+            fields?: Array<{
+              apiId: string;
+              name?: string;
+              type?: string;
+              required?: boolean;
+              sortOrder?: number;
+              settings?: unknown;
+            }>;
+          },
+        );
+        return {
+          name,
+          ok: true,
+          summary: `Diff schema versions: ${changes.length} change(s)`,
+          data: { kind, from: from.id, to: to.id, changes },
+        };
+      }
+      case "list_audit_events": {
+        const events = await listAuditEvents({
+          websiteId,
+          resourceType: str(rawArgs, "resourceType"),
+          resourceId: str(rawArgs, "resourceId"),
+          limit: num(rawArgs, "limit"),
+          offset: num(rawArgs, "offset"),
+        });
+        const data = events.map((e) => ({
+          id: e.id,
+          actorUserId: e.actorUserId,
+          actorKind: e.actorKind,
+          action: e.action,
+          resourceType: e.resourceType,
+          resourceId: e.resourceId,
+          summary: e.summary,
+          createdAt: e.createdAt,
+        }));
+        return {
+          name,
+          ok: true,
+          summary: `Listed ${data.length} audit event(s)`,
           data,
         };
       }
