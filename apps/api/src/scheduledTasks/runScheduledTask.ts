@@ -5,7 +5,7 @@ import { httpError } from "../lib/httpError.js";
 import { computeNextRunAt } from "./nextRunAt.js";
 import { getTaskOrThrow, scheduleFieldsFromTask } from "./service.js";
 
-const REPLY_MAX = 4000;
+const REPLY_MAX = Number(process.env.CMS_SCHEDULED_TASK_REPLY_MAX ?? 16_000);
 const SUMMARY_MAX = 500;
 const ERROR_MAX = 1000;
 /** Soft cap for unattended agent runs (Promise.race; work may continue in background). */

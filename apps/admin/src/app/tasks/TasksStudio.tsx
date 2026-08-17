@@ -6,8 +6,9 @@ import type {
   ScheduledTask,
   ScheduledTaskFrequency,
 } from "@cms/shared";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { getBrowserAdminClient, getStoredUser } from "@/lib/auth";
+import { AiMarkdown } from "@/components/AiMarkdown";
 
 const WEEKDAYS = [
   { value: 0, label: "Zondag" },
@@ -119,6 +120,17 @@ function formatWhen(iso: string | null | undefined): string {
   }
 }
 
+function runPreview(run: {
+  summary: string | null;
+  reply: string | null;
+}): string {
+  const source = (run.summary ?? run.reply ?? "").trim();
+  if (!source) return "";
+  const firstLine = source.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+  const cleaned = firstLine.replace(/^#{1,6}\s+/, "").trim();
+  return cleaned.length > 120 ? `${cleaned.slice(0, 119)}…` : cleaned;
+}
+
 function frequencySummary(task: ScheduledTask): string {
   const time = `${task.timeOfDay} (${task.timeZone})`;
   if (task.frequency === "once") return `Eenmalig om ${time}`;
@@ -175,6 +187,7 @@ export function TasksStudio() {
   const [pending, setPending] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   const selected = useMemo(
     () => tasks.find((t) => t.id === selectedId) ?? null,
@@ -785,6 +798,7 @@ export function TasksStudio() {
             <table className="table">
               <thead>
                 <tr>
+                  <th aria-label="Uitklappen" />
                   <th>Gestart</th>
                   <th>Ok</th>
                   <th>Tokens</th>
@@ -794,21 +808,47 @@ export function TasksStudio() {
                 </tr>
               </thead>
               <tbody>
-                {selected.recentRuns!.map((run) => (
-                  <tr key={run.id}>
-                    <td className="muted">{formatWhen(run.startedAt)}</td>
-                    <td>{run.ok ? "ja" : "nee"}</td>
-                    <td className="muted">{run.totalTokens}</td>
-                    <td className="muted">
-                      {run.toolCallCount}
-                      {run.uniqueToolCount
-                        ? ` (${run.uniqueToolCount} uniek)`
-                        : ""}
-                    </td>
-                    <td className="muted">{run.stoppedReason ?? "—"}</td>
-                    <td>{run.summary ?? "—"}</td>
-                  </tr>
-                ))}
+                {selected.recentRuns!.map((run) => {
+                  const detail = run.reply ?? run.summary ?? "";
+                  const hasDetail = detail.trim().length > 0;
+                  const isExpanded = expandedRunId === run.id;
+                  return (
+                    <Fragment key={run.id}>
+                      <tr
+                        onClick={() =>
+                          hasDetail &&
+                          setExpandedRunId(isExpanded ? null : run.id)
+                        }
+                        style={{ cursor: hasDetail ? "pointer" : "default" }}
+                        aria-expanded={hasDetail ? isExpanded : undefined}
+                      >
+                        <td className="muted" aria-hidden>
+                          {hasDetail ? (isExpanded ? "▾" : "▸") : ""}
+                        </td>
+                        <td className="muted">{formatWhen(run.startedAt)}</td>
+                        <td>{run.ok ? "ja" : "nee"}</td>
+                        <td className="muted">{run.totalTokens}</td>
+                        <td className="muted">
+                          {run.toolCallCount}
+                          {run.uniqueToolCount
+                            ? ` (${run.uniqueToolCount} uniek)`
+                            : ""}
+                        </td>
+                        <td className="muted">{run.stoppedReason ?? "—"}</td>
+                        <td>{runPreview(run) || "—"}</td>
+                      </tr>
+                      {isExpanded && hasDetail && (
+                        <tr>
+                          <td colSpan={7}>
+                            <div className="ai-run-detail">
+                              <AiMarkdown content={detail} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
