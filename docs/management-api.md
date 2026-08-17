@@ -194,7 +194,7 @@ Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `
 
 | Method | Path | Notes |
 |--------|------|------|
-| GET | `.../entries` | Query: `limit`, `offset`, `slug`, `status` |
+| GET | `.../entries` | Query: `limit`, `offset`, `slug`, `status`, `locale`, `q`, `sort`, `order`, `field`, `in`. Field filter: `field=<fieldApiId>&in=v1,v2` (max 50 values). Supported field types: `text`, `textarea`, `slug`, `username`, `relation`, `relations`, `number`, `boolean`, `datetime`. Unsupported (`richtext`, `media`, `password`), unknown field, or empty `in` → `400`. `total` is filtered when `field`/`in` are set. |
 | GET | `.../entries/by-id/:entryId` | By id |
 | POST | `.../entries` | `{ slug, locale?, status?, fields? }` — default status `draft`; locale defaults to website `defaultLocale` |
 | POST | `.../entries/:entryId/translations` | `{ locale }` — copy fields as draft translation |

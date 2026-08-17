@@ -280,6 +280,20 @@ export function publicOpenApiDocument(baseUrl: string) {
               in: "query",
               schema: { type: "string", enum: ["asc", "desc"] },
             },
+            {
+              name: "field",
+              in: "query",
+              description:
+                "Field apiId to filter on (requires `in`). Supported: text, textarea, slug, username, relation, relations, number, boolean, datetime.",
+              schema: { type: "string" },
+            },
+            {
+              name: "in",
+              in: "query",
+              description:
+                "Comma-separated match values for `field` (max 50). Equality / IN; relations matches array overlap.",
+              schema: { type: "string" },
+            },
           ],
           responses: { "200": { description: "Paginated entries" } },
         },

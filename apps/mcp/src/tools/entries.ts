@@ -8,7 +8,7 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
 
   server.tool(
     "list_entries",
-    "List entries for a content type (includes drafts). Management API.",
+    "List entries for a content type (includes drafts). Management API. Optional field+in filters entries by a content-type field value (equality/IN).",
     {
       apiId: z.string().min(1),
       limit: z.number().int().min(1).max(100).optional(),
@@ -19,6 +19,15 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
         .enum(["publishedAt", "createdAt", "updatedAt", "sortOrder"])
         .optional(),
       order: z.enum(["asc", "desc"]).optional(),
+      field: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Field apiId to filter on (requires `in`)"),
+      in: z
+        .union([z.string(), z.array(z.string())])
+        .optional()
+        .describe("Match value(s) for `field` — string or string array"),
     },
     async ({ apiId, ...params }) => {
       try {

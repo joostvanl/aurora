@@ -87,7 +87,7 @@ export function registerPublicTools(server: McpServer, ctx: McpContext) {
 
   server.tool(
     "list_published_entries",
-    "List published entries (public API). Requires CMS_SITE_KEY.",
+    "List published entries (public API). Requires CMS_SITE_KEY. Optional field+in filters by content-type field value.",
     {
       apiId: z.string().min(1),
       limit: z.number().int().min(1).max(100).optional(),
@@ -97,6 +97,15 @@ export function registerPublicTools(server: McpServer, ctx: McpContext) {
         .enum(["publishedAt", "createdAt", "updatedAt", "sortOrder"])
         .optional(),
       order: z.enum(["asc", "desc"]).optional(),
+      field: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Field apiId to filter on (requires `in`)"),
+      in: z
+        .union([z.string(), z.array(z.string())])
+        .optional()
+        .describe("Match value(s) for `field` — string or string array"),
     },
     async ({ apiId, ...params }) => {
       try {

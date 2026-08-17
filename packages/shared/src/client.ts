@@ -79,6 +79,10 @@ export type ListEntriesParams = {
   q?: string;
   sort?: "publishedAt" | "createdAt" | "updatedAt" | "sortOrder" | "slug";
   order?: "asc" | "desc";
+  /** Field apiId to filter on (requires `in`). */
+  field?: string;
+  /** Match values for `field` — comma-separated string, or string[] (joined with commas). */
+  in?: string | string[];
 };
 
 export type ListEntriesResult = {
@@ -410,6 +414,10 @@ export class CmsClient {
     if (params.locale) qs.set("locale", params.locale);
     if (params.sort) qs.set("sort", params.sort);
     if (params.order) qs.set("order", params.order);
+    if (params.field) qs.set("field", params.field);
+    if (params.in != null) {
+      qs.set("in", Array.isArray(params.in) ? params.in.join(",") : params.in);
+    }
     const query = qs.toString();
     return this.request<ListEntriesResult>(
       `/api/v1/content-types/${apiId}/entries${query ? `?${query}` : ""}`,
@@ -538,6 +546,10 @@ export class CmsClient {
     if (params.q) qs.set("q", params.q);
     if (params.sort) qs.set("sort", params.sort);
     if (params.order) qs.set("order", params.order);
+    if (params.field) qs.set("field", params.field);
+    if (params.in != null) {
+      qs.set("in", Array.isArray(params.in) ? params.in.join(",") : params.in);
+    }
     const query = qs.toString();
     return this.request<ListEntriesResult>(
       `/api/v1/admin/content-types/${apiId}/entries${query ? `?${query}` : ""}`,

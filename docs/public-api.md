@@ -125,8 +125,17 @@ List published entries.
 | `locale` | BCP-47 | website `defaultLocale` | Exact locale (e.g. `nl-NL`) |
 | `sort` | `publishedAt` \| `createdAt` \| `updatedAt` \| `sortOrder` | `publishedAt` | `sortOrder` uses field apiId `sortOrder` when present |
 | `order` | `asc` \| `desc` | `desc` (`asc` when `sort=sortOrder`) | |
+| `field` | string | — | Field `apiId` to filter on (requires `in`) |
+| `in` | string | — | Comma-separated match values for `field` (max 50). Equality / IN against the field’s stored value |
 
-Response: `{ items, total, limit, offset, sort, order }` — see [response-shapes.md](./response-shapes.md).
+**Field filter:** `field` + `in` select entries whose named content-type field equals any of the values.
+
+- Supported types: `text`, `textarea`, `slug`, `username`, `relation`, `relations`, `number`, `boolean`, `datetime`.
+- `relation` matches the related entry **slug**; `relations` matches if the stored slug array contains any requested value.
+- Unsupported types (`richtext`, `media`, `password`), unknown `field`, empty `in`, or `field`/`in` used alone → `400` `VALIDATION_FAILED`.
+- Example: `?field=category&in=news,sports`
+
+Response: `{ items, total, limit, offset, sort, order }` — see [response-shapes.md](./response-shapes.md). `total` reflects the filtered set when `field`/`in` are used.
 
 Empty tenant / no matches → `200` with `items: []` (not 401). Wrong site key → `401` + `SITE_KEY_INVALID`.
 

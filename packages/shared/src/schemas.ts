@@ -277,6 +277,9 @@ export type ListEntriesSort = z.infer<typeof ListEntriesSortSchema>;
 export const ListEntriesOrderSchema = z.enum(["asc", "desc"]);
 export type ListEntriesOrder = z.infer<typeof ListEntriesOrderSchema>;
 
+/** Max values allowed in list_entries `in` query param. */
+export const LIST_ENTRIES_IN_MAX = 50;
+
 export const ListEntriesQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -289,12 +292,54 @@ export const ListEntriesQuerySchema = z
     q: z.string().max(200).optional(),
     sort: ListEntriesSortSchema.optional(),
     order: ListEntriesOrderSchema.optional(),
+    /**
+     * Field apiId to filter on (requires `in`). Equality / IN against EntryFieldValue.
+     * Supported types: text, textarea, slug, username, relation, relations, number, boolean, datetime.
+     */
+    field: z.string().min(1).max(100).optional(),
+    /**
+     * Comma-separated match values for `field` (trimmed; empty segments dropped).
+     * At least one value required when `field` is set; max LIST_ENTRIES_IN_MAX.
+     */
+    in: z.string().max(4000).optional(),
   })
   .transform((q) => {
     const sort = q.sort ?? "publishedAt";
     const order = q.order ?? (sort === "sortOrder" || sort === "slug" ? "asc" : "desc");
     const search = q.q?.trim() || undefined;
-    return { ...q, q: search, sort, order };
+    const field = q.field?.trim() || undefined;
+    const inValues = q.in
+      ? q.in
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+    return { ...q, q: search, sort, order, field, inValues };
+  })
+  .superRefine((q, ctx) => {
+    const hasField = Boolean(q.field);
+    const hasIn = Boolean(q.inValues && q.inValues.length > 0);
+    if (hasField && !hasIn) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Query param `in` is required when `field` is set (comma-separated values)",
+        path: ["in"],
+      });
+    }
+    if (hasIn && !hasField) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Query param `field` is required when `in` is set",
+        path: ["field"],
+      });
+    }
+    if (q.inValues && q.inValues.length > LIST_ENTRIES_IN_MAX) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Query param \`in\` accepts at most ${LIST_ENTRIES_IN_MAX} values`,
+        path: ["in"],
+      });
+    }
   });
 
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;

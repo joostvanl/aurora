@@ -55,6 +55,7 @@ import {
   diffEntrySnapshots,
 } from "../lib/snapshotDiff.js";
 import { listEntriesOrdered } from "../lib/listEntries.js";
+import { resolveListFieldFilter } from "../lib/listEntriesFieldFilter.js";
 import { httpError } from "../lib/httpError.js";
 import { mintPreviewToken, verifyPreviewToken } from "../lib/preview.js";
 import {
@@ -249,6 +250,11 @@ export async function registerRoutes(app: FastifyInstance) {
       const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
       const query = ListEntriesQuerySchema.parse(request.query);
       const locale = resolvePublicLocale(query.locale, website);
+      const fieldFilter = resolveListFieldFilter({
+        fields: ct.fields,
+        fieldApiId: query.field,
+        inValues: query.inValues,
+      });
 
       const where = {
         contentTypeId: ct.id,
@@ -265,6 +271,7 @@ export async function registerRoutes(app: FastifyInstance) {
         limit: query.limit,
         offset: query.offset,
         sortOrderFieldId: sortOrderField?.id ?? null,
+        fieldFilter,
       });
 
       trackContentRequest({
@@ -631,6 +638,11 @@ export async function registerRoutes(app: FastifyInstance) {
         const websiteId = websiteIdFrom(request);
         const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
         const query = ListEntriesQuerySchema.parse(request.query);
+        const fieldFilter = resolveListFieldFilter({
+          fields: ct.fields,
+          fieldApiId: query.field,
+          inValues: query.inValues,
+        });
         const where = {
           contentTypeId: ct.id,
           ...(query.status ? { status: query.status } : {}),
@@ -657,6 +669,7 @@ export async function registerRoutes(app: FastifyInstance) {
           limit: query.limit,
           offset: query.offset,
           sortOrderFieldId: sortOrderField?.id ?? null,
+          fieldFilter,
         });
         return {
           items: items.map(serializeEntry),
