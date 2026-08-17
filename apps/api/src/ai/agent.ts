@@ -7,6 +7,7 @@ import type {
 import { prisma } from "../db.js";
 import { entryInclude } from "../lib/entries.js";
 import { serializeEntry } from "../lib/serialize.js";
+import { recordAuditEvent } from "../lib/audit.js";
 import { createAiSnapshotGuard } from "../lib/versions.js";
 import { resolveAiConfig } from "./config.js";
 import { runEntryContentEdit } from "./entryEdit.js";
@@ -160,6 +161,9 @@ export async function runAiChat(input: {
   maxTokens?: number | null;
   /** Soft cap on tool invocations; null/omit = MAX_STEPS tool rounds. */
   maxToolCalls?: number | null;
+  /** When source is scheduled_task, include in audit meta. */
+  scheduledTaskId?: string;
+  scheduledTaskRunId?: string;
 }): Promise<AiChatResponse> {
   // Entry write/optimize/macro: deterministic JSON-patch path (works without tool-calling support).
   if (
@@ -322,6 +326,27 @@ You are running as a scheduled task without a human in the loop. Create or edit 
             };
           }
           return version;
+        },
+        recordAudit: async (event) => {
+          await recordAuditEvent({
+            websiteId: input.websiteId,
+            actorUserId: input.userId,
+            actorKind: "ai",
+            action: event.action,
+            resourceType: event.resourceType,
+            resourceId: event.resourceId,
+            summary: event.summary,
+            meta: {
+              ...(event.meta ?? {}),
+              source,
+              ...(input.scheduledTaskId
+                ? { taskId: input.scheduledTaskId }
+                : {}),
+              ...(input.scheduledTaskRunId
+                ? { runId: input.scheduledTaskRunId }
+                : {}),
+            },
+          });
         },
       });
       toolCalls.push(result);

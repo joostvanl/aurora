@@ -117,6 +117,8 @@ describe("runScheduledTask", () => {
         allowPublish: false,
         maxTokens: null,
         maxToolCalls: null,
+        scheduledTaskId: "task1",
+        scheduledTaskRunId: "run1",
         context: expect.objectContaining({ mode: "general" }),
       }),
     );

@@ -122,6 +122,8 @@ export async function runScheduledTask(input: {
         allowPublish: task.allowPublish,
         maxTokens: task.maxTokens,
         maxToolCalls: task.maxToolCalls,
+        scheduledTaskId: task.id,
+        scheduledTaskRunId: run.id,
         context: {
           mode: "general",
           websiteName: website?.name,

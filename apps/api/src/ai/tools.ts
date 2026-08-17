@@ -124,6 +124,15 @@ export type ToolResult = {
   data?: unknown;
 };
 
+/** Payload passed to the optional audit hook after a successful mutation. */
+export type AiToolAuditEvent = {
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  summary: string;
+  meta?: Record<string, unknown> | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -926,6 +935,8 @@ export async function executeAiTool(
     /** Explicit user approval required before content-type / field mutations. */
     schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
+    /** Fired after a successful mutative tool (not on blocked / failed tools). */
+    recordAudit?: (event: AiToolAuditEvent) => Promise<void>;
   },
 ): Promise<ToolResult> {
   const { websiteId, role } = ctx;
@@ -935,6 +946,13 @@ export async function executeAiTool(
     if (entryId && ctx.ensureAiSnapshot) {
       await ctx.ensureAiSnapshot(entryId);
     }
+  };
+  const auditMutation = async (event: AiToolAuditEvent) => {
+    if (!ctx.recordAudit) return;
+    await ctx.recordAudit({
+      ...event,
+      meta: { tool: name, ...(event.meta ?? {}) },
+    });
   };
 
   if (draftOnly && SCHEDULED_TASK_BLOCKED_TOOLS.has(name)) {
@@ -1042,6 +1060,12 @@ export async function executeAiTool(
           },
           include: { fields: { orderBy: { sortOrder: "asc" } } },
         });
+        await auditMutation({
+          action: "content_type.create",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Created content type ${apiId}`,
+        });
         return {
           name,
           ok: true,
@@ -1063,6 +1087,12 @@ export async function executeAiTool(
           },
           include: { fields: { orderBy: { sortOrder: "asc" } } },
         });
+        await auditMutation({
+          action: "content_type.update",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Updated content type ${apiId}`,
+        });
         return {
           name,
           ok: true,
@@ -1073,8 +1103,14 @@ export async function executeAiTool(
       case "delete_content_type": {
         const apiId = str(rawArgs, "apiId");
         if (!apiId) throw new Error("apiId required");
-        await getContentTypeOrThrow(apiId, websiteId);
+        const existing = await getContentTypeOrThrow(apiId, websiteId);
         await prisma.contentType.delete({ where: { websiteId_apiId: { websiteId, apiId } } });
+        await auditMutation({
+          action: "content_type.delete",
+          resourceType: "content_type",
+          resourceId: existing.id,
+          summary: `Deleted content type ${apiId}`,
+        });
         return { name, ok: true, summary: `Deleted content type ${apiId}` };
       }
       case "create_field": {
@@ -1110,6 +1146,13 @@ export async function executeAiTool(
           },
         });
         const updated = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        await auditMutation({
+          action: "field.create",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Created field ${apiId} on ${contentTypeApiId}`,
+          meta: { fieldApiId: apiId },
+        });
         return {
           name,
           ok: true,
@@ -1146,6 +1189,13 @@ export async function executeAiTool(
           },
         });
         const updated = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        await auditMutation({
+          action: "field.update",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Updated field ${fieldApiId} on ${contentTypeApiId}`,
+          meta: { fieldApiId },
+        });
         return {
           name,
           ok: true,
@@ -1164,6 +1214,13 @@ export async function executeAiTool(
         if (!field) throw new Error("Field not found");
         await prisma.fieldDefinition.delete({ where: { id: field.id } });
         const updated = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        await auditMutation({
+          action: "field.delete",
+          resourceType: "content_type",
+          resourceId: updated.id,
+          summary: `Deleted field ${fieldApiId} on ${contentTypeApiId}`,
+          meta: { fieldApiId },
+        });
         return {
           name,
           ok: true,
@@ -1300,6 +1357,13 @@ export async function executeAiTool(
           contentTypeApiId: ct.apiId,
           slug: full.slug,
         });
+        await auditMutation({
+          action: "entry.create",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Created entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId },
+        });
         return {
           name,
           ok: true,
@@ -1366,6 +1430,13 @@ export async function executeAiTool(
           contentTypeApiId: ct.apiId,
           slug: full.slug,
         });
+        await auditMutation({
+          action: "entry.update",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Updated entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId, fieldApiId },
+        });
         return {
           name,
           ok: true,
@@ -1398,6 +1469,13 @@ export async function executeAiTool(
           entryId: full.id,
           contentTypeApiId: ct.apiId,
           slug: full.slug,
+        });
+        await auditMutation({
+          action: "entry.update",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Updated entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId, fieldApiId },
         });
         return {
           name,
@@ -1439,6 +1517,13 @@ export async function executeAiTool(
           },
           include: entryInclude,
         });
+        await auditMutation({
+          action: "entry.update",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Updated entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId },
+        });
         return {
           name,
           ok: true,
@@ -1473,6 +1558,13 @@ export async function executeAiTool(
           contentTypeApiId: ct.apiId,
           slug: full.slug,
         });
+        await auditMutation({
+          action: publish ? "entry.publish" : "entry.unpublish",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `${publish ? "Published" : "Unpublished"} entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId },
+        });
         return {
           name,
           ok: true,
@@ -1492,6 +1584,13 @@ export async function executeAiTool(
         });
         if (!existing) throw new Error("Entry not found");
         await prisma.entry.delete({ where: { id: existing.id } });
+        await auditMutation({
+          action: "entry.delete",
+          resourceType: "entry",
+          resourceId: existing.id,
+          summary: `Deleted entry ${existing.slug}`,
+          meta: { contentTypeApiId: ct.apiId },
+        });
         return {
           name,
           ok: true,
