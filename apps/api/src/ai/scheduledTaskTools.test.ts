@@ -42,5 +42,11 @@ describe("scheduled_task tool policy", () => {
   it("lists blocked tool names", () => {
     expect(SCHEDULED_TASK_BLOCKED_TOOLS.has("publish_entry")).toBe(true);
     expect(SCHEDULED_TASK_BLOCKED_TOOLS.has("unpublish_entry")).toBe(true);
+    expect(SCHEDULED_TASK_BLOCKED_TOOLS.has("restore_entry_version")).toBe(
+      true,
+    );
+    expect(
+      SCHEDULED_TASK_BLOCKED_TOOLS.has("restore_content_type_version"),
+    ).toBe(true);
   });
 });
