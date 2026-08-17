@@ -26,6 +26,7 @@ import {
   getWebsiteLocales,
 } from "../lib/locales.js";
 import { createAllLocaleSiblings } from "../lib/translations.js";
+import { createEntryVersion } from "../lib/versions.js";
 import {
   serializeScheduledTask,
   serializeScheduledTaskRun,
@@ -1074,6 +1075,14 @@ export async function executeAiTool(
     /** Explicit user approval required before content-type / field mutations. */
     schemaChangeConfirmed?: boolean;
     ensureAiSnapshot?: (entryId: string, label?: string) => Promise<unknown>;
+    ensureAiContentTypeSnapshot?: (
+      contentTypeId: string,
+      options?: {
+        label?: string;
+        changeSummary?: string;
+        createdByUserId?: string | null;
+      },
+    ) => Promise<unknown>;
     /** Fired after a successful mutative tool (not on blocked / failed tools). */
     recordAudit?: (event: AiToolAuditEvent) => Promise<void>;
   },
@@ -1084,6 +1093,17 @@ export async function executeAiTool(
   const ensureSnapshot = async (entryId: string | undefined) => {
     if (entryId && ctx.ensureAiSnapshot) {
       await ctx.ensureAiSnapshot(entryId);
+    }
+  };
+  const ensureSchemaSnapshot = async (
+    contentTypeId: string | undefined,
+    options?: { label?: string; changeSummary?: string },
+  ) => {
+    if (contentTypeId && ctx.ensureAiContentTypeSnapshot) {
+      await ctx.ensureAiContentTypeSnapshot(contentTypeId, {
+        ...options,
+        createdByUserId,
+      });
     }
   };
   const auditMutation = async (event: AiToolAuditEvent) => {
@@ -1199,6 +1219,10 @@ export async function executeAiTool(
           },
           include: { fields: { orderBy: { sortOrder: "asc" } } },
         });
+        await ensureSchemaSnapshot(ct.id, {
+          label: "Created",
+          changeSummary: "Content type created",
+        });
         await auditMutation({
           action: "content_type.create",
           resourceType: "content_type",
@@ -1215,7 +1239,10 @@ export async function executeAiTool(
       case "update_content_type": {
         const apiId = str(rawArgs, "apiId");
         if (!apiId) throw new Error("apiId required");
-        await getContentTypeOrThrow(apiId, websiteId);
+        const existing = await getContentTypeOrThrow(apiId, websiteId);
+        await ensureSchemaSnapshot(existing.id, {
+          changeSummary: "Content type updated",
+        });
         const ct = await prisma.contentType.update({
           where: { websiteId_apiId: { websiteId, apiId } },
           data: {
@@ -1243,6 +1270,9 @@ export async function executeAiTool(
         const apiId = str(rawArgs, "apiId");
         if (!apiId) throw new Error("apiId required");
         const existing = await getContentTypeOrThrow(apiId, websiteId);
+        await ensureSchemaSnapshot(existing.id, {
+          changeSummary: "Content type deleted",
+        });
         await prisma.contentType.delete({ where: { websiteId_apiId: { websiteId, apiId } } });
         await auditMutation({
           action: "content_type.delete",
@@ -1270,6 +1300,9 @@ export async function executeAiTool(
           );
         }
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        await ensureSchemaSnapshot(ct.id, {
+          changeSummary: `Field ${apiId} created`,
+        });
         const maxOrder = ct.fields.reduce((m, f) => Math.max(m, f.sortOrder), -1);
         await prisma.fieldDefinition.create({
           data: {
@@ -1308,6 +1341,9 @@ export async function executeAiTool(
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
         const field = ct.fields.find((f) => f.apiId === fieldApiId);
         if (!field) throw new Error("Field not found");
+        await ensureSchemaSnapshot(ct.id, {
+          changeSummary: `Field ${fieldApiId} updated`,
+        });
         const relatedContentTypeApiId = str(rawArgs, "relatedContentTypeApiId");
         await prisma.fieldDefinition.update({
           where: { id: field.id },
@@ -1351,6 +1387,9 @@ export async function executeAiTool(
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
         const field = ct.fields.find((f) => f.apiId === fieldApiId);
         if (!field) throw new Error("Field not found");
+        await ensureSchemaSnapshot(ct.id, {
+          changeSummary: `Field ${fieldApiId} deleted`,
+        });
         await prisma.fieldDefinition.delete({ where: { id: field.id } });
         const updated = await getContentTypeOrThrow(contentTypeApiId, websiteId);
         await auditMutation({
@@ -1490,6 +1529,14 @@ export async function executeAiTool(
         const full = await prisma.entry.findUniqueOrThrow({
           where: { id: entry.id },
           include: entryInclude,
+        });
+        await createEntryVersion({
+          entryId: full.id,
+          source: "ai",
+          label: "Created",
+          createdByUserId,
+          actorKind: "ai",
+          changeSummary: "Entry created",
         });
         await hooks.emit("onEntryCreate", {
           entryId: full.id,

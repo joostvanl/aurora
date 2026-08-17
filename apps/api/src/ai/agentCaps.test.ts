@@ -44,6 +44,10 @@ vi.mock("../lib/versions.js", () => ({
   createAiSnapshotGuard: () => async () => null,
 }));
 
+vi.mock("../lib/contentTypeVersions.js", () => ({
+  createAiContentTypeSnapshotGuard: () => async () => null,
+}));
+
 import { resolveAiConfig } from "./config.js";
 import { chatCompletion } from "./openai.js";
 import { executeAiTool } from "./tools.js";

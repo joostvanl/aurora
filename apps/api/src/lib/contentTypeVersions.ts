@@ -294,3 +294,58 @@ export async function restoreContentTypeVersion(options: {
     restoredFrom: serializeContentTypeVersion(version),
   };
 }
+
+/**
+ * One pre-mutation schema snapshot per content type for a single request (AI or auto).
+ * Prevents double-versioning when AI tools batch multiple field/type edits in one turn.
+ */
+export function createContentTypeSnapshotGuard(
+  defaultSource: "ai" | "auto" = "ai",
+) {
+  const snapped = new Set<string>();
+
+  return async function ensureSnapshot(
+    contentTypeId: string,
+    options?: {
+      label?: string;
+      source?: string;
+      createdByUserId?: string | null;
+      actorKind?: ActorKind;
+      changeSummary?: string;
+    },
+  ) {
+    if (snapped.has(contentTypeId)) return null;
+    snapped.add(contentTypeId);
+    return createContentTypeVersion({
+      contentTypeId,
+      label:
+        options?.label ??
+        (defaultSource === "ai" ? "Before AI edit" : undefined),
+      source: options?.source ?? defaultSource,
+      createdByUserId: options?.createdByUserId,
+      actorKind: options?.actorKind,
+      changeSummary: options?.changeSummary,
+    });
+  };
+}
+
+/** Ensure one schema snapshot per content type for a single AI turn. */
+export function createAiContentTypeSnapshotGuard() {
+  const ensure = createContentTypeSnapshotGuard("ai");
+  return async function ensureAiContentTypeSnapshot(
+    contentTypeId: string,
+    options?: {
+      label?: string;
+      changeSummary?: string;
+      createdByUserId?: string | null;
+    },
+  ) {
+    return ensure(contentTypeId, {
+      label: options?.label ?? "Before AI edit",
+      source: "ai",
+      actorKind: "ai",
+      changeSummary: options?.changeSummary,
+      createdByUserId: options?.createdByUserId,
+    });
+  };
+}
