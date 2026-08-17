@@ -7,6 +7,10 @@ describe("toolScope", () => {
     expect(toolDomain("get_entry")).toBe("core");
     expect(toolDomain("create_field")).toBe("schema");
     expect(toolDomain("list_forms")).toBe("forms");
+    expect(toolDomain("list_entry_versions")).toBe("core");
+    expect(toolDomain("list_audit_events")).toBe("core");
+    expect(toolDomain("diff_versions")).toBe("core");
+    expect(toolDomain("list_content_type_versions")).toBe("schema");
   });
 
   it("keeps scheduled tasks on core only", () => {
@@ -45,8 +49,12 @@ describe("aiToolsForSource scoping", () => {
     const names = aiToolsForSource("scheduled_task").map((t) => t.function.name);
     expect(names).toContain("get_entry");
     expect(names).toContain("fetch_url");
+    expect(names).toContain("list_entry_versions");
+    expect(names).toContain("list_audit_events");
+    expect(names).toContain("diff_versions");
     expect(names).not.toContain("list_forms");
     expect(names).not.toContain("create_content_type");
+    expect(names).not.toContain("list_content_type_versions");
     expect(names).not.toContain("publish_entry");
   });
 
@@ -56,8 +64,11 @@ describe("aiToolsForSource scoping", () => {
       context: { pathname: "/dashboard" },
     }).map((t) => t.function.name);
     expect(names).not.toContain("create_content_type");
+    expect(names).not.toContain("list_content_type_versions");
     expect(names).toContain("list_forms");
     expect(names).toContain("get_entry");
+    expect(names).toContain("list_entry_versions");
+    expect(names).toContain("list_audit_events");
   });
 
   it("entry focus drops forms/schema schemas from catalog", () => {
@@ -66,8 +77,11 @@ describe("aiToolsForSource scoping", () => {
       context: { entryId: "e1", pathname: "/entries/page/e1" },
     }).map((t) => t.function.name);
     expect(names).toContain("str_replace");
+    expect(names).toContain("list_entry_versions");
+    expect(names).toContain("list_audit_events");
     expect(names).not.toContain("list_forms");
     expect(names).not.toContain("create_field");
+    expect(names).not.toContain("list_content_type_versions");
   });
 
   it("forms focus keeps form tools", () => {
@@ -77,5 +91,14 @@ describe("aiToolsForSource scoping", () => {
     }).map((t) => t.function.name);
     expect(names).toContain("list_form_submissions");
     expect(names).not.toContain("create_content_type");
+  });
+
+  it("content-types screen exposes schema version tools to builders", () => {
+    const names = aiToolsForSource("chat", {
+      role: "builder",
+      context: { pathname: "/content-types/page" },
+    }).map((t) => t.function.name);
+    expect(names).toContain("list_content_type_versions");
+    expect(names).toContain("diff_versions");
   });
 });
