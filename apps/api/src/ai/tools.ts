@@ -26,7 +26,11 @@ import {
   getWebsiteLocales,
 } from "../lib/locales.js";
 import { createAllLocaleSiblings } from "../lib/translations.js";
-import { createEntryVersion } from "../lib/versions.js";
+import {
+  createEntryVersion,
+  listEntryVersions,
+  restoreEntryVersion,
+} from "../lib/versions.js";
 import {
   serializeScheduledTask,
   serializeScheduledTaskRun,
@@ -38,12 +42,14 @@ import { getCurrentDateTime } from "./currentTime.js";
 import { resolveToolDomains, toolDomain } from "./toolScope.js";
 import type { AiChatContext } from "@cms/shared";
 import { annotateAuditEvent, listAuditEvents } from "../lib/audit.js";
-import { listContentTypeVersions } from "../lib/contentTypeVersions.js";
+import {
+  listContentTypeVersions,
+  restoreContentTypeVersion,
+} from "../lib/contentTypeVersions.js";
 import {
   diffContentTypeSnapshots,
   diffEntrySnapshots,
 } from "../lib/snapshotDiff.js";
-import { listEntryVersions } from "../lib/versions.js";
 
 /** Schema tools require builder+ (mutations + schema version reads); else content (editor+). */
 export const SCHEMA_TOOLS = new Set([
@@ -54,6 +60,7 @@ export const SCHEMA_TOOLS = new Set([
   "update_field",
   "delete_field",
   "list_content_type_versions",
+  "restore_content_type_version",
   "create_form",
   "update_form",
   "delete_form",
@@ -89,6 +96,16 @@ export const CONTENT_SCHEMA_TOOLS = new Set([
   "create_field",
   "update_field",
   "delete_field",
+  "restore_content_type_version",
+]);
+
+/**
+ * Version restore tools — require explicit user confirmation (same gate as
+ * schema mutations) and are always blocked for scheduled_task runs.
+ */
+export const RESTORE_TOOLS = new Set([
+  "restore_entry_version",
+  "restore_content_type_version",
 ]);
 
 /** Entry-level tools that address existing content by contentTypeApiId. */
@@ -133,6 +150,8 @@ export function isPseudoContentTypeApiId(
 export const SCHEDULED_TASK_BLOCKED_TOOLS = new Set([
   "publish_entry",
   "unpublish_entry",
+  "restore_entry_version",
+  "restore_content_type_version",
 ]);
 
 /**
@@ -1048,6 +1067,53 @@ export const aiTools: ChatTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "restore_entry_version",
+      description:
+        "Restore an entry to a prior version (checkpoints current state first so the restore is undoable). Requires explicit user confirmation. Always show a diff_versions comparison before asking. Never available during scheduled tasks.",
+      parameters: {
+        type: "object",
+        properties: {
+          apiId: {
+            type: "string",
+            description: "Content type apiId.",
+          },
+          entryId: { type: "string" },
+          versionId: {
+            type: "string",
+            description: "Target entry version id to restore.",
+          },
+        },
+        required: ["apiId", "entryId", "versionId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "restore_content_type_version",
+      description:
+        "Restore a content type (schema + fields) to a prior version (checkpoints current schema first). Requires builder/admin and explicit user confirmation. Show diff_versions first. Never available during scheduled tasks.",
+      parameters: {
+        type: "object",
+        properties: {
+          apiId: {
+            type: "string",
+            description: "Content type apiId.",
+          },
+          versionId: {
+            type: "string",
+            description: "Target content-type version id to restore.",
+          },
+        },
+        required: ["apiId", "versionId"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 /** Tool list for chatCompletion; scoped by source, role, and studio context. */
@@ -1065,6 +1131,8 @@ export function aiToolsForSource(
     tools = tools.filter(
       (t) => !SCHEDULED_TASK_INSPECT_TOOLS.has(t.function.name),
     );
+    // Restores are never allowed on scheduled runs (even with allowPublish).
+    tools = tools.filter((t) => !RESTORE_TOOLS.has(t.function.name));
     if (!opts?.allowPublish) {
       tools = tools.filter(
         (t) => !SCHEDULED_TASK_BLOCKED_TOOLS.has(t.function.name),
@@ -1140,6 +1208,16 @@ export async function executeAiTool(
     });
   };
 
+  // Restores are always forbidden for scheduled tasks (even with allowPublish).
+  if (ctx.source === "scheduled_task" && RESTORE_TOOLS.has(name)) {
+    return {
+      name,
+      ok: false,
+      summary:
+        "Blocked: scheduled tasks cannot restore entry or content-type versions.",
+    };
+  }
+
   if (draftOnly && SCHEDULED_TASK_BLOCKED_TOOLS.has(name)) {
     return {
       name,
@@ -1180,12 +1258,17 @@ export async function executeAiTool(
     };
   }
 
-  if (CONTENT_SCHEMA_TOOLS.has(name) && !ctx.schemaChangeConfirmed) {
+  if (
+    (CONTENT_SCHEMA_TOOLS.has(name) || RESTORE_TOOLS.has(name)) &&
+    !ctx.schemaChangeConfirmed
+  ) {
     return {
       name,
       ok: false,
       summary:
-        "Blocked: content-structure changes need explicit user approval first. Explain the planned content-type/field change, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead). Do NOT work around this by using entry tools (create_entry/write_field) or by inventing a content type — wait for the user's confirmation.",
+        name.startsWith("restore_")
+          ? "Blocked: restoring a prior version needs explicit user approval first. Show a diff_versions comparison, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead)."
+          : "Blocked: content-structure changes need explicit user approval first. Explain the planned content-type/field change, ask for confirmation, and only call this tool after the user clearly approves (e.g. yes / ok / go ahead). Do NOT work around this by using entry tools (create_entry/write_field) or by inventing a content type — wait for the user's confirmation.",
       data: { needsConfirmation: true, tool: name },
     };
   }
@@ -2512,6 +2595,66 @@ export async function executeAiTool(
           ok: true,
           summary: `Annotated audit event ${annotated.id}`,
           data: annotated,
+        };
+      }
+      case "restore_entry_version": {
+        const apiId = str(rawArgs, "apiId");
+        const entryId = str(rawArgs, "entryId");
+        const versionId = str(rawArgs, "versionId");
+        if (!apiId || !entryId || !versionId) {
+          throw new Error("apiId, entryId, and versionId required");
+        }
+        const ct = await getContentTypeOrThrow(apiId, websiteId);
+        const existing = await prisma.entry.findFirst({
+          where: { id: entryId, contentTypeId: ct.id },
+        });
+        if (!existing) {
+          return { name, ok: false, summary: `Entry "${entryId}" not found` };
+        }
+        const result = await restoreEntryVersion({
+          contentTypeId: ct.id,
+          entryId: existing.id,
+          versionId,
+          createdByUserId,
+        });
+        await auditMutation({
+          action: "entry.restore",
+          resourceType: "entry",
+          resourceId: existing.id,
+          summary: `Restored entry ${existing.slug}`,
+          meta: { versionId, contentTypeApiId: ct.apiId },
+        });
+        return {
+          name,
+          ok: true,
+          summary: `Restored entry ${existing.slug} from version ${versionId}`,
+          data: result,
+        };
+      }
+      case "restore_content_type_version": {
+        const apiId = str(rawArgs, "apiId");
+        const versionId = str(rawArgs, "versionId");
+        if (!apiId || !versionId) {
+          throw new Error("apiId and versionId required");
+        }
+        const ct = await getContentTypeOrThrow(apiId, websiteId);
+        const result = await restoreContentTypeVersion({
+          contentTypeId: ct.id,
+          versionId,
+          createdByUserId,
+        });
+        await auditMutation({
+          action: "content_type.restore",
+          resourceType: "content_type",
+          resourceId: ct.id,
+          summary: `Restored content type ${ct.apiId}`,
+          meta: { versionId, contentTypeApiId: ct.apiId },
+        });
+        return {
+          name,
+          ok: true,
+          summary: `Restored content type ${ct.apiId} from version ${versionId}`,
+          data: result,
         };
       }
       default:

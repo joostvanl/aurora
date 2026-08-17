@@ -12,6 +12,8 @@ describe("toolScope", () => {
     expect(toolDomain("annotate_audit_event")).toBe("core");
     expect(toolDomain("diff_versions")).toBe("core");
     expect(toolDomain("list_content_type_versions")).toBe("schema");
+    expect(toolDomain("restore_content_type_version")).toBe("schema");
+    expect(toolDomain("restore_entry_version")).toBe("core");
   });
 
   it("keeps scheduled tasks on core only", () => {
@@ -57,7 +59,9 @@ describe("aiToolsForSource scoping", () => {
     expect(names).not.toContain("list_forms");
     expect(names).not.toContain("create_content_type");
     expect(names).not.toContain("list_content_type_versions");
+    expect(names).not.toContain("restore_content_type_version");
     expect(names).not.toContain("publish_entry");
+    expect(names).not.toContain("restore_entry_version");
   });
 
   it("omits schema tools for editor role", () => {
@@ -101,6 +105,7 @@ describe("aiToolsForSource scoping", () => {
       context: { pathname: "/content-types/page" },
     }).map((t) => t.function.name);
     expect(names).toContain("list_content_type_versions");
+    expect(names).toContain("restore_content_type_version");
     expect(names).toContain("diff_versions");
   });
 });
