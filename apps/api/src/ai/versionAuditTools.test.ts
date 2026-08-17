@@ -44,6 +44,7 @@ vi.mock("../lib/contentTypeVersions.js", () => ({
 
 vi.mock("../lib/audit.js", () => ({
   listAuditEvents: (...args: unknown[]) => mockedListAuditEvents(...args),
+  annotateAuditEvent: vi.fn(),
 }));
 
 vi.mock("../lib/snapshotDiff.js", () => ({
@@ -206,6 +207,7 @@ describe("version/audit tools — website scoping", () => {
       websiteId: "ws1",
       resourceType: "entry",
       resourceId: "e1",
+      missingAiDetail: undefined,
       limit: 5,
       offset: undefined,
     });
@@ -219,6 +221,10 @@ describe("version/audit tools — website scoping", () => {
         resourceId: "e1",
         summary: "Updated home",
         createdAt: "2026-08-17T11:00:00.000Z",
+        aiDetail: undefined,
+        aiDetailActorKind: undefined,
+        aiDetailCreatedAt: undefined,
+        aiDetailSource: undefined,
       },
     ]);
   });

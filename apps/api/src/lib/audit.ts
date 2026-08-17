@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { asCreatedByUserId } from "./entries.js";
+import { httpError } from "./httpError.js";
 import type { ActorKind } from "./versions.js";
 
 export type AuditEventDto = {
@@ -14,6 +15,10 @@ export type AuditEventDto = {
   summary: string;
   meta: unknown;
   createdAt: string;
+  aiDetail: string | null;
+  aiDetailActorKind: string | null;
+  aiDetailCreatedAt: string | null;
+  aiDetailSource: string | null;
 };
 
 export function serializeAuditEvent(row: {
@@ -27,6 +32,10 @@ export function serializeAuditEvent(row: {
   summary: string;
   meta: Prisma.JsonValue | null;
   createdAt: Date;
+  aiDetail?: string | null;
+  aiDetailActorKind?: string | null;
+  aiDetailCreatedAt?: Date | null;
+  aiDetailSource?: string | null;
 }): AuditEventDto {
   return {
     id: row.id,
@@ -39,6 +48,12 @@ export function serializeAuditEvent(row: {
     summary: row.summary,
     meta: row.meta,
     createdAt: row.createdAt.toISOString(),
+    aiDetail: row.aiDetail ?? null,
+    aiDetailActorKind: row.aiDetailActorKind ?? null,
+    aiDetailCreatedAt: row.aiDetailCreatedAt
+      ? row.aiDetailCreatedAt.toISOString()
+      : null,
+    aiDetailSource: row.aiDetailSource ?? null,
   };
 }
 
@@ -78,6 +93,8 @@ export async function listAuditEvents(options: {
   websiteId: string;
   resourceType?: string;
   resourceId?: string;
+  /** When true, only events that still lack an AI enrichment. */
+  missingAiDetail?: boolean;
   limit?: number;
   offset?: number;
 }) {
@@ -88,10 +105,56 @@ export async function listAuditEvents(options: {
       websiteId: options.websiteId,
       ...(options.resourceType ? { resourceType: options.resourceType } : {}),
       ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+      ...(options.missingAiDetail ? { aiDetail: null } : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit,
     skip: offset,
   });
   return rows.map(serializeAuditEvent);
+}
+
+/**
+ * Append-only AI enrichment. Never mutates summary, action, actor fields, or createdAt.
+ * Rejects when aiDetail is already set unless force=true (not exposed to AI tools).
+ */
+export async function annotateAuditEvent(options: {
+  websiteId: string;
+  auditEventId: string;
+  detail: string;
+  actorKind?: ActorKind;
+  source?: string | null;
+  force?: boolean;
+}) {
+  const detail = options.detail.trim();
+  if (!detail) {
+    throw httpError(400, "detail is required", "VALIDATION_FAILED");
+  }
+
+  const existing = await prisma.auditEvent.findFirst({
+    where: { id: options.auditEventId, websiteId: options.websiteId },
+  });
+  if (!existing) {
+    throw httpError(404, "Audit event not found", "NOT_FOUND");
+  }
+
+  if (existing.aiDetail != null && !options.force) {
+    throw httpError(
+      409,
+      "Audit event already has an AI detail; enrichment is append-once unless force=true",
+      "CONFLICT",
+    );
+  }
+
+  const actorKind: ActorKind = options.actorKind ?? "ai";
+  const row = await prisma.auditEvent.update({
+    where: { id: existing.id },
+    data: {
+      aiDetail: detail,
+      aiDetailActorKind: actorKind,
+      aiDetailCreatedAt: new Date(),
+      aiDetailSource: options.source ?? null,
+    },
+  });
+  return serializeAuditEvent(row);
 }

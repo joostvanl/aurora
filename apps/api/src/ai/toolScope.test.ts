@@ -9,6 +9,7 @@ describe("toolScope", () => {
     expect(toolDomain("list_forms")).toBe("forms");
     expect(toolDomain("list_entry_versions")).toBe("core");
     expect(toolDomain("list_audit_events")).toBe("core");
+    expect(toolDomain("annotate_audit_event")).toBe("core");
     expect(toolDomain("diff_versions")).toBe("core");
     expect(toolDomain("list_content_type_versions")).toBe("schema");
   });
@@ -51,6 +52,7 @@ describe("aiToolsForSource scoping", () => {
     expect(names).toContain("fetch_url");
     expect(names).toContain("list_entry_versions");
     expect(names).toContain("list_audit_events");
+    expect(names).toContain("annotate_audit_event");
     expect(names).toContain("diff_versions");
     expect(names).not.toContain("list_forms");
     expect(names).not.toContain("create_content_type");

@@ -258,7 +258,29 @@ export function ContentTypeVersions({
                   <td>
                     <code>{e.action}</code>
                   </td>
-                  <td>{e.summary}</td>
+                  <td>
+                    <div>{e.summary}</div>
+                    {e.aiDetail ? (
+                      <div
+                        className="muted"
+                        style={{
+                          marginTop: "0.35rem",
+                          paddingTop: "0.35rem",
+                          borderTop: "1px solid var(--border)",
+                          fontSize: "0.9em",
+                        }}
+                      >
+                        <span
+                          className="badge"
+                          data-status="draft"
+                          style={{ marginRight: "0.4rem" }}
+                        >
+                          AI-generated
+                        </span>
+                        {e.aiDetail}
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

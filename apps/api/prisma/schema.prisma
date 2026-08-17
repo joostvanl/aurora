@@ -275,6 +275,11 @@ model AuditEvent {
   summary      String
   meta         Json?
   createdAt    DateTime @default(now())
+  /** Append-only AI enrichment (CMS-48). Never overwrites summary/action/actor*. */
+  aiDetail           String?
+  aiDetailActorKind  String?
+  aiDetailCreatedAt  DateTime?
+  aiDetailSource     String?
 
   @@index([websiteId, createdAt])
   @@index([resourceType, resourceId, createdAt])

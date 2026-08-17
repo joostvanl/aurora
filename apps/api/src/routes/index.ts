@@ -45,7 +45,11 @@ import {
   listContentTypeVersions,
   restoreContentTypeVersion,
 } from "../lib/contentTypeVersions.js";
-import { listAuditEvents, recordAuditEvent } from "../lib/audit.js";
+import {
+  annotateAuditEvent,
+  listAuditEvents,
+  recordAuditEvent,
+} from "../lib/audit.js";
 import {
   diffContentTypeSnapshots,
   diffEntrySnapshots,
@@ -1283,18 +1287,55 @@ export async function registerRoutes(app: FastifyInstance) {
       Querystring: {
         resourceType?: string;
         resourceId?: string;
+        missingAiDetail?: string;
         limit?: string;
         offset?: string;
       };
     }>("/api/v1/admin/audit-events", async (request) => {
       const websiteId = websiteIdFrom(request);
+      const missingRaw = request.query.missingAiDetail?.toLowerCase();
+      const missingAiDetail =
+        missingRaw === "1" || missingRaw === "true" || missingRaw === "yes";
       return listAuditEvents({
         websiteId,
         resourceType: request.query.resourceType,
         resourceId: request.query.resourceId,
+        missingAiDetail: missingAiDetail || undefined,
         limit: request.query.limit ? Number(request.query.limit) : undefined,
         offset: request.query.offset ? Number(request.query.offset) : undefined,
       });
+    });
+
+    admin.post<{
+      Params: { id: string };
+      Body: { detail?: string; force?: boolean };
+    }>("/api/v1/admin/audit-events/:id/annotate", async (request) => {
+      const websiteId = websiteIdFrom(request);
+      const actorUserId = asCreatedByUserId(userIdFrom(request));
+      const detail =
+        typeof request.body?.detail === "string" ? request.body.detail : "";
+      const annotated = await annotateAuditEvent({
+        websiteId,
+        auditEventId: request.params.id,
+        detail,
+        actorKind: "user",
+        source: "admin",
+        force: request.body?.force === true,
+      });
+      await recordAuditEvent({
+        websiteId,
+        actorUserId,
+        actorKind: "user",
+        action: "audit_event.annotate",
+        resourceType: annotated.resourceType,
+        resourceId: annotated.resourceId,
+        summary: `Annotated audit event ${annotated.id}`,
+        meta: {
+          annotatedAuditEventId: annotated.id,
+          action: annotated.action,
+        },
+      });
+      return annotated;
     });
 
     admin.post<{ Params: { apiId: string; entryId: string } }>(

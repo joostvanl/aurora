@@ -161,6 +161,11 @@ export const AuditEventSchema = z.object({
   summary: z.string(),
   meta: z.unknown().nullable().optional(),
   createdAt: z.string(),
+  /** Append-only AI enrichment (CMS-48); null when not yet annotated. */
+  aiDetail: z.string().nullable().optional(),
+  aiDetailActorKind: z.string().nullable().optional(),
+  aiDetailCreatedAt: z.string().nullable().optional(),
+  aiDetailSource: z.string().nullable().optional(),
 });
 
 export type AuditEvent = z.infer<typeof AuditEventSchema>;

@@ -827,18 +827,31 @@ export class CmsClient {
   listAuditEvents(params?: {
     resourceType?: string;
     resourceId?: string;
+    missingAiDetail?: boolean;
     limit?: number;
     offset?: number;
   }) {
     const search = new URLSearchParams();
     if (params?.resourceType) search.set("resourceType", params.resourceType);
     if (params?.resourceId) search.set("resourceId", params.resourceId);
+    if (params?.missingAiDetail) search.set("missingAiDetail", "true");
     if (params?.limit != null) search.set("limit", String(params.limit));
     if (params?.offset != null) search.set("offset", String(params.offset));
     const qs = search.toString();
     return this.request<AuditEvent[]>(
       `/api/v1/admin/audit-events${qs ? `?${qs}` : ""}`,
       {},
+      { auth: true },
+    );
+  }
+
+  annotateAuditEvent(id: string, input: { detail: string; force?: boolean }) {
+    return this.request<AuditEvent>(
+      `/api/v1/admin/audit-events/${id}/annotate`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
       { auth: true },
     );
   }

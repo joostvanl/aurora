@@ -37,7 +37,7 @@ import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 import { getCurrentDateTime } from "./currentTime.js";
 import { resolveToolDomains, toolDomain } from "./toolScope.js";
 import type { AiChatContext } from "@cms/shared";
-import { listAuditEvents } from "../lib/audit.js";
+import { annotateAuditEvent, listAuditEvents } from "../lib/audit.js";
 import { listContentTypeVersions } from "../lib/contentTypeVersions.js";
 import {
   diffContentTypeSnapshots,
@@ -1000,7 +1000,7 @@ export const aiTools: ChatTool[] = [
     function: {
       name: "list_audit_events",
       description:
-        "List audit trail events for this website (newest first). Optionally filter by resourceType and resourceId. Use for who/when questions; never invent actors or timestamps.",
+        "List audit trail events for this website (newest first). Optionally filter by resourceType, resourceId, or missingAiDetail=true to find recent changes that still need an AI description. Use for who/when questions and scheduled enrichment batches; never invent actors or timestamps.",
       parameters: {
         type: "object",
         properties: {
@@ -1009,6 +1009,11 @@ export const aiTools: ChatTool[] = [
             description: 'e.g. "entry", "content_type".',
           },
           resourceId: { type: "string" },
+          missingAiDetail: {
+            type: "boolean",
+            description:
+              "When true, only return events that still lack aiDetail (for batch enrichment).",
+          },
           limit: {
             type: "number",
             description: "Max events (default 50, max 100).",
@@ -1018,6 +1023,27 @@ export const aiTools: ChatTool[] = [
             description: "Pagination offset (default 0).",
           },
         },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "annotate_audit_event",
+      description:
+        "Append a factual AI description (aiDetail) to an existing audit event without changing its original summary/action/actor. Base the detail on version diffs (diff_versions). One enrichment per event — second attempts are rejected. Skip events that already have aiDetail; use list_audit_events with missingAiDetail=true to find work.",
+      parameters: {
+        type: "object",
+        properties: {
+          auditEventId: { type: "string" },
+          detail: {
+            type: "string",
+            description:
+              "Factual description of what changed, based on version diffs. No speculation about intent or people.",
+          },
+        },
+        required: ["auditEventId", "detail"],
         additionalProperties: false,
       },
     },
@@ -2428,6 +2454,7 @@ export async function executeAiTool(
           websiteId,
           resourceType: str(rawArgs, "resourceType"),
           resourceId: str(rawArgs, "resourceId"),
+          missingAiDetail: bool(rawArgs, "missingAiDetail"),
           limit: num(rawArgs, "limit"),
           offset: num(rawArgs, "offset"),
         });
@@ -2440,12 +2467,51 @@ export async function executeAiTool(
           resourceId: e.resourceId,
           summary: e.summary,
           createdAt: e.createdAt,
+          aiDetail: e.aiDetail,
+          aiDetailActorKind: e.aiDetailActorKind,
+          aiDetailCreatedAt: e.aiDetailCreatedAt,
+          aiDetailSource: e.aiDetailSource,
         }));
         return {
           name,
           ok: true,
           summary: `Listed ${data.length} audit event(s)`,
           data,
+        };
+      }
+      case "annotate_audit_event": {
+        const auditEventId = str(rawArgs, "auditEventId");
+        const detail = str(rawArgs, "detail");
+        if (!auditEventId || !detail) {
+          return {
+            name,
+            ok: false,
+            summary: "auditEventId and detail are required",
+          };
+        }
+        const annotated = await annotateAuditEvent({
+          websiteId,
+          auditEventId,
+          detail,
+          actorKind: "ai",
+          source: ctx.source ?? "ai",
+          // force is intentionally not accepted from AI tool args
+        });
+        await auditMutation({
+          action: "audit_event.annotate",
+          resourceType: annotated.resourceType,
+          resourceId: annotated.resourceId,
+          summary: `Annotated audit event ${annotated.id}`,
+          meta: {
+            annotatedAuditEventId: annotated.id,
+            action: annotated.action,
+          },
+        });
+        return {
+          name,
+          ok: true,
+          summary: `Annotated audit event ${annotated.id}`,
+          data: annotated,
         };
       }
       default:
