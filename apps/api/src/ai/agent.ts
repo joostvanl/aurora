@@ -7,6 +7,7 @@ import type {
 import { prisma } from "../db.js";
 import { entryInclude } from "../lib/entries.js";
 import { serializeEntry } from "../lib/serialize.js";
+import { createAiContentTypeSnapshotGuard } from "../lib/contentTypeVersions.js";
 import { createAiSnapshotGuard } from "../lib/versions.js";
 import { resolveAiConfig } from "./config.js";
 import { runEntryContentEdit } from "./entryEdit.js";
@@ -119,7 +120,7 @@ Frontend handoff (only after real content-structure changes):
 Structural / schema changes (critical — ask once, then execute the batch):
 1. Creating, updating, or deleting content types or fields changes the CMS structure. You MUST ask the user for explicit approval **once** before the first schema tool call in a plan.
 2. In the approval request, briefly state the **full** planned batch (type/field apiIds and why). Do not call create_content_type / update_content_type / delete_content_type / create_field / update_field / delete_field until they confirm.
-3. Confirmation examples: "ja", "ok", "akkoord", "voer door", "yes go ahead". Without that, structure tools are blocked by the server. After one confirmation, complete the whole approved batch — do **not** re-ask for each field or step. Schema versions + restore exist if something needs undoing.
+3. Confirmation examples: "ja", "ok", "akkoord", "voer door", "yes go ahead". Without that, structure tools are blocked by the server. After one confirmation, complete the whole approved batch — do **not** re-ask for each field or step. Schema changes are versioned automatically (one snapshot per content type per turn); restore from studio version history if something needs undoing.
 4. Only ask again if the user refused, or you need a **materially different** schema change than what they already approved.
 5. Entry create/update/publish and form submission triage do **not** need this extra approval step (unless the user also asked for a schema change).
 6. Prefer existing content types when the user only wants pages/posts/content — do not invent new types unless they clearly want a schema change and approve it.
@@ -191,6 +192,7 @@ export async function runAiChat(input: {
   }
 
   const ensureAiSnapshot = createAiSnapshotGuard();
+  const ensureAiContentTypeSnapshot = createAiContentTypeSnapshotGuard();
   let versionCreated: AiChatResponse["versionCreated"] = null;
   const schemaChangeConfirmed = userConfirmedSchemaChange(
     input.message,
@@ -323,6 +325,7 @@ You are running as a scheduled task without a human in the loop. Create or edit 
           }
           return version;
         },
+        ensureAiContentTypeSnapshot,
       });
       toolCalls.push(result);
       uniqueToolNames.add(call.function.name);
