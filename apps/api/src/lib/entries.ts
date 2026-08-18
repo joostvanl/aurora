@@ -34,8 +34,9 @@ export async function setEntryFields(
   fields: Record<string, unknown>,
   websiteId?: string,
   locale?: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
 ) {
-  const contentType = await prisma.contentType.findUniqueOrThrow({
+  const contentType = await db.contentType.findUniqueOrThrow({
     where: { id: contentTypeId },
     select: { websiteId: true },
   });
@@ -43,21 +44,21 @@ export async function setEntryFields(
 
   let resolveLocale = locale;
   if (!resolveLocale) {
-    const entry = await prisma.entry.findUnique({
+    const entry = await db.entry.findUnique({
       where: { id: entryId },
       select: { locale: true },
     });
     resolveLocale = entry?.locale;
   }
   if (!resolveLocale) {
-    const website = await prisma.website.findUniqueOrThrow({
+    const website = await db.website.findUniqueOrThrow({
       where: { id: siteId },
       select: { defaultLocale: true },
     });
     resolveLocale = website.defaultLocale;
   }
 
-  const definitions = await prisma.fieldDefinition.findMany({
+  const definitions = await db.fieldDefinition.findMany({
     where: { contentTypeId },
   });
   const byApiId = new Map(definitions.map((d) => [d.apiId, d]));
@@ -69,7 +70,7 @@ export async function setEntryFields(
     if (def.type === "password") {
       if (isPasswordLeaveUnchanged(value)) continue;
       const stored = hashPasswordFieldValue(value);
-      await prisma.entryFieldValue.upsert({
+      await db.entryFieldValue.upsert({
         where: {
           entryId_fieldId: { entryId, fieldId: def.id },
         },
@@ -98,7 +99,7 @@ export async function setEntryFields(
       });
     }
 
-    await prisma.entryFieldValue.upsert({
+    await db.entryFieldValue.upsert({
       where: {
         entryId_fieldId: { entryId, fieldId: def.id },
       },

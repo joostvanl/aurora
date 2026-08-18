@@ -30,6 +30,10 @@ import {
   getContentTypeOrThrow,
   setEntryFields,
 } from "../lib/entries.js";
+import {
+  applyEntryFieldEdits,
+  lockEntryForUpdate,
+} from "../lib/fieldEdits.js";
 import { serializeContentType, serializeEntry } from "../lib/serialize.js";
 import {
   assertRelatedContentType,
@@ -943,28 +947,45 @@ export async function registerRoutes(app: FastifyInstance) {
         }
 
         const nextStatus = body.status ?? existing.status;
-        await prisma.entry.update({
-          where: { id: existing.id },
-          data: {
-            ...(body.slug !== undefined ? { slug: body.slug } : {}),
-            ...(body.locale !== undefined ? { locale: body.locale } : {}),
-            ...(body.status !== undefined ? { status: body.status } : {}),
-            publishedAt:
-              nextStatus === EntryStatus.published
-                ? existing.publishedAt ?? new Date()
-                : null,
-          },
-        });
+        let fieldEditSummary:
+          | Awaited<ReturnType<typeof applyEntryFieldEdits>>
+          | undefined;
 
-        if (body.fields) {
-          await setEntryFields(
-            existing.id,
-            ct.id,
-            body.fields,
-            websiteId,
-            nextLocale,
-          );
-        }
+        await prisma.$transaction(async (tx) => {
+          await lockEntryForUpdate(tx, existing.id);
+
+          await tx.entry.update({
+            where: { id: existing.id },
+            data: {
+              ...(body.slug !== undefined ? { slug: body.slug } : {}),
+              ...(body.locale !== undefined ? { locale: body.locale } : {}),
+              ...(body.status !== undefined ? { status: body.status } : {}),
+              publishedAt:
+                nextStatus === EntryStatus.published
+                  ? existing.publishedAt ?? new Date()
+                  : null,
+            },
+          });
+
+          if (body.field_edits) {
+            fieldEditSummary = await applyEntryFieldEdits(tx, {
+              entryId: existing.id,
+              contentTypeId: ct.id,
+              fieldEdits: body.field_edits,
+            });
+          }
+
+          if (body.fields) {
+            await setEntryFields(
+              existing.id,
+              ct.id,
+              body.fields,
+              websiteId,
+              nextLocale,
+              tx,
+            );
+          }
+        });
 
         const actorUserId = asCreatedByUserId(userIdFrom(request));
         const version = await createEntryVersion({
@@ -995,7 +1016,10 @@ export async function registerRoutes(app: FastifyInstance) {
           slug: full.slug,
         });
 
-        return serializeEntry(full);
+        return {
+          ...serializeEntry(full),
+          ...(fieldEditSummary ? { fieldEditSummary } : {}),
+        };
       },
     );
 

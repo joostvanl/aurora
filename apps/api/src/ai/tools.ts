@@ -35,7 +35,10 @@ import {
   serializeScheduledTask,
   serializeScheduledTaskRun,
 } from "../scheduledTasks/serialize.js";
-import { applyStrReplace } from "./patches.js";
+import {
+  applyEntryFieldEdits,
+  lockEntryForUpdate,
+} from "../lib/fieldEdits.js";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 import { getCurrentDateTime } from "./currentTime.js";
@@ -1685,40 +1688,48 @@ export async function executeAiTool(
         }
         await ensureSnapshot(entryId);
         const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
-        const field = ct.fields.find((f) => f.apiId === fieldApiId);
-        if (!field) throw new Error("Field not found");
         const entry = await prisma.entry.findFirst({
           where: { id: entryId, contentTypeId: ct.id },
-          include: entryInclude,
         });
         if (!entry) throw new Error("Entry not found");
-        const current = entry.fieldValues.find((fv) => fv.fieldId === field.id);
-        const currentValue = current?.value;
-        if (typeof currentValue !== "string") {
-          throw new Error(
-            "str_replace only works on string field values; use write_field instead",
-          );
-        }
-        const next = applyStrReplace(
-          currentValue,
-          oldString,
-          newString,
-          bool(rawArgs, "replace_all") ?? false,
-        );
-        await prisma.entryFieldValue.upsert({
-          where: {
-            entryId_fieldId: { entryId: entry.id, fieldId: field.id },
-          },
-          create: {
+
+        const nextStatus = entry.status;
+        const fieldEditSummary = await prisma.$transaction(async (tx) => {
+          await lockEntryForUpdate(tx, entry.id);
+          await tx.entry.update({
+            where: { id: entry.id },
+            data: {
+              publishedAt:
+                nextStatus === EntryStatus.published
+                  ? entry.publishedAt ?? new Date()
+                  : null,
+            },
+          });
+          return applyEntryFieldEdits(tx, {
             entryId: entry.id,
-            fieldId: field.id,
-            value: next as Prisma.InputJsonValue,
-          },
-          update: { value: next as Prisma.InputJsonValue },
+            contentTypeId: ct.id,
+            fieldEdits: {
+              [fieldApiId]: [
+                {
+                  old_string: oldString,
+                  new_string: newString,
+                  replace_all: bool(rawArgs, "replace_all") ?? false,
+                },
+              ],
+            },
+          });
         });
+
         const full = await prisma.entry.findUniqueOrThrow({
           where: { id: entry.id },
           include: entryInclude,
+        });
+        await createEntryVersion({
+          entryId: full.id,
+          source: "ai",
+          createdByUserId,
+          actorKind: "ai",
+          changeSummary: "Entry updated (str_replace)",
         });
         await hooks.emit("onEntryUpdate", {
           entryId: full.id,
@@ -1736,7 +1747,10 @@ export async function executeAiTool(
           name,
           ok: true,
           summary: `Patched ${contentTypeApiId}/${entry.slug}.${fieldApiId}`,
-          data: serializeEntry(full),
+          data: {
+            ...serializeEntry(full),
+            fieldEditSummary,
+          },
         };
       }
       case "write_field": {

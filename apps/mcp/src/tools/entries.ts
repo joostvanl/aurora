@@ -183,36 +183,19 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       replaceAll,
     }) => {
       try {
-        const entry = await client.getAdminEntry(apiId, entryId);
-        const current = entry.fields[fieldApiId];
-        if (typeof current !== "string") {
-          return toolError(
-            new Error(
-              `Field "${fieldApiId}" is not a string (got ${typeof current})`,
-            ),
-          );
-        }
-        const count = current.split(oldString).length - 1;
-        if (count === 0) {
-          return toolError(
-            new Error(`oldString not found in field "${fieldApiId}"`),
-          );
-        }
-        if (!replaceAll && count > 1) {
-          return toolError(
-            new Error(
-              `oldString matches ${count} times; pass replaceAll=true or use a more specific string`,
-            ),
-          );
-        }
-        const next = replaceAll
-          ? current.split(oldString).join(newString)
-          : current.replace(oldString, newString);
         const updated = await client.updateEntry(apiId, entryId, {
-          fields: { [fieldApiId]: next },
+          field_edits: {
+            [fieldApiId]: [
+              {
+                old_string: oldString,
+                new_string: newString,
+                replace_all: replaceAll,
+              },
+            ],
+          },
         });
         return toolOk({
-          replaced: replaceAll ? count : 1,
+          replaced: updated.fieldEditSummary?.applied ?? 1,
           entry: updated,
         });
       } catch (err) {

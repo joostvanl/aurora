@@ -199,7 +199,7 @@ Upload response: `{ url, filename, mimeType, size, provider, fileId? }`. Store `
 | POST | `.../entries` | `{ slug, locale?, status?, fields? }` — default status `draft`; locale defaults to website `defaultLocale` |
 | POST | `.../entries/:entryId/translations` | `{ locale }` — copy fields as draft translation |
 | POST | `.../sync-locales` | `{ dryRun? }` — for `all_locales` types: create missing locale stubs |
-| PATCH | `.../entries/:entryId` | Partial update |
+| PATCH | `.../entries/:entryId` | Partial update. Body: `{ slug?, locale?, status?, fields?, field_edits? }`. `fields` merges by field apiId (unknown keys silently skipped). `field_edits` applies atomic find/replace on string fields: `{ "<apiId>": [{ old_string, new_string, replace_all? }] }`. Cannot send both `fields.X` and `field_edits.X` for the same field → `400 VALIDATION_FAILED`. Unknown field apiId in `field_edits` → `400` (fail-loud; unlike `fields`). `password` and `slug` field types cannot be patched. Non-string current value → `400`. Anchor not found or ambiguous (without `replace_all`) → `409 CONFLICT` with `issues` path `["field_edits", "<apiId>", <index>]`. Before match, `\\r\\n` is normalized to `\\n` in stored value and edit strings. Response is `FlatEntry` plus optional `fieldEditSummary: { applied, fields: { [apiId]: { length } } }`. `field_edits` alone does not change `status`/`publishedAt`. All meta, `fields`, and `field_edits` changes run in one DB transaction with row lock on the entry. |
 | DELETE | `.../entries/:entryId` | — |
 | POST | `.../entries/:entryId/publish` | Public visibility |
 | POST | `.../entries/:entryId/unpublish` | Back to draft |

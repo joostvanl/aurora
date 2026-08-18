@@ -211,16 +211,59 @@ export const CreateEntrySchema = z.object({
 
 export type CreateEntryInput = z.input<typeof CreateEntrySchema>;
 
-export const UpdateEntrySchema = z.object({
-  slug: z
-    .string()
-    .min(1)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .optional(),
-  locale: LocaleCodeSchema.optional(),
-  status: EntryStatusSchema.optional(),
-  fields: z.record(z.unknown()).optional(),
+export const FieldEditSchema = z.object({
+  old_string: z.string().min(1),
+  new_string: z.string(),
+  replace_all: z.boolean().optional(),
 });
+
+export type FieldEdit = z.infer<typeof FieldEditSchema>;
+
+export const FieldEditsSchema = z
+  .record(z.string().min(1), z.array(FieldEditSchema).min(1))
+  .refine((record) => Object.keys(record).length > 0, {
+    message: "field_edits must include at least one field",
+  });
+
+export type FieldEdits = z.infer<typeof FieldEditsSchema>;
+
+export const FieldEditSummarySchema = z.object({
+  applied: z.number().int().nonnegative(),
+  fields: z.record(z.object({ length: z.number().int().nonnegative() })),
+});
+
+export type FieldEditSummary = z.infer<typeof FieldEditSummarySchema>;
+
+export const PatchEntryResponseSchema = FlatEntrySchema.extend({
+  fieldEditSummary: FieldEditSummarySchema.optional(),
+});
+
+export type PatchEntryResponse = z.infer<typeof PatchEntryResponseSchema>;
+
+export const UpdateEntrySchema = z
+  .object({
+    slug: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .optional(),
+    locale: LocaleCodeSchema.optional(),
+    status: EntryStatusSchema.optional(),
+    fields: z.record(z.unknown()).optional(),
+    field_edits: FieldEditsSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.fields || !data.field_edits) return;
+    for (const apiId of Object.keys(data.field_edits)) {
+      if (Object.prototype.hasOwnProperty.call(data.fields, apiId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Cannot send both fields.${apiId} and field_edits.${apiId}`,
+          path: ["field_edits", apiId],
+        });
+      }
+    }
+  });
 
 export type UpdateEntryInput = z.infer<typeof UpdateEntrySchema>;
 

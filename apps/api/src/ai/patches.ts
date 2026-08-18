@@ -1,3 +1,8 @@
+/** Normalize CRLF to LF before literal string matching. */
+export function normalizeNewlines(value: string): string {
+  return value.replace(/\r\n/g, "\n");
+}
+
 /**
  * Cursor-style find/replace for string field values.
  * old_string must match uniquely unless replace_all is true.

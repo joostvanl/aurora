@@ -20,6 +20,7 @@ import type {
   UpdateFormSubmissionInput,
   VerifyEntryCredentialsInput,
   VerifyEntryPasswordInput,
+  PatchEntryResponse,
 } from "./schemas.js";
 import type {
   CreateScheduledTaskInput,
@@ -639,7 +640,7 @@ export class CmsClient {
   }
 
   updateEntry(apiId: string, entryId: string, input: UpdateEntryInput) {
-    return this.request<FlatEntry>(
+    return this.request<PatchEntryResponse>(
       `/api/v1/admin/content-types/${apiId}/entries/${entryId}`,
       { method: "PATCH", body: JSON.stringify(input) },
       { auth: true },
