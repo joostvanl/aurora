@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { Prisma as PrismaNS } from "@prisma/client";
 import { applyStrReplace, normalizeNewlines } from "../ai/patches.js";
 import { httpError, type ApiIssue } from "./httpError.js";
+import { isSecretField } from "./fields.js";
+import { assertExpectedFieldHash, fieldDigest } from "./fieldHash.js";
 
 /** Field types that must not be patched via field_edits (routing / security). */
 export const FIELD_EDIT_EXCLUDED_TYPES = new Set(["password", "slug"]);
@@ -92,9 +94,10 @@ export async function applyEntryFieldEdits(
     entryId: string;
     contentTypeId: string;
     fieldEdits: FieldEditsInput;
+    expectedHashes?: Record<string, string>;
   },
 ): Promise<FieldEditSummary> {
-  const { entryId, contentTypeId, fieldEdits } = params;
+  const { entryId, contentTypeId, fieldEdits, expectedHashes } = params;
 
   const definitions = await tx.fieldDefinition.findMany({
     where: { contentTypeId },
@@ -107,7 +110,7 @@ export async function applyEntryFieldEdits(
     if (!def) {
       fieldEditValidation(apiId, null, `Unknown field "${apiId}"`);
     }
-    if (FIELD_EDIT_EXCLUDED_TYPES.has(def.type)) {
+    if (isSecretField(def) || FIELD_EDIT_EXCLUDED_TYPES.has(def.type)) {
       fieldEditValidation(
         apiId,
         null,
@@ -126,7 +129,7 @@ export async function applyEntryFieldEdits(
   const valueByFieldId = new Map(existingValues.map((row) => [row.fieldId, row.value]));
 
   let applied = 0;
-  const lengthsByApiId: Record<string, { length: number }> = {};
+  const lengthsByApiId: Record<string, { length: number; sha256: string }> = {};
   const upserts: Array<{ fieldId: string; value: string }> = [];
 
   for (const [apiId, edits] of Object.entries(fieldEdits)) {
@@ -145,6 +148,14 @@ export async function applyEntryFieldEdits(
         0,
         `Field "${apiId}" is not a string (got ${typeof raw})`,
       );
+    }
+
+    const expected = expectedHashes?.[apiId];
+    if (expected) {
+      assertExpectedFieldHash(apiId, raw, expected, [
+        "expected_field_hashes",
+        apiId,
+      ]);
     }
 
     let current = raw;
@@ -171,7 +182,8 @@ export async function applyEntryFieldEdits(
       }
     }
 
-    lengthsByApiId[apiId] = { length: current.length };
+    const digest = fieldDigest(current);
+    lengthsByApiId[apiId] = { length: digest.length, sha256: digest.sha256 };
     upserts.push({ fieldId: def.id, value: current });
   }
 

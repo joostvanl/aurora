@@ -1,11 +1,16 @@
 /** Server-side context budgets for the AI agent (token cost control). */
 
+import { fieldDigest } from "../lib/fieldHash.js";
+
 export const DEFAULT_AI_HISTORY_MAX = 10;
 export const DEFAULT_AI_TOOL_RESULT_MAX_CHARS = 6_000;
 export const DEFAULT_AI_KNOWLEDGE_MAX_CHARS = 6_000;
 export const DEFAULT_AI_KNOWLEDGE_MAX_CHARS_FOCUSED = 12_000;
 export const DEFAULT_AI_INDEX_PER_TYPE = 15;
 export const DEFAULT_AI_INDEX_PER_TYPE_FOCUSED = 40;
+
+/** Tools whose payload must never be sliced (hard fail already applied upstream). */
+export const NEVER_SLICE_TOOL_RESULTS = new Set(["get_entry_field"]);
 
 function envInt(
   env: NodeJS.ProcessEnv,
@@ -64,15 +69,114 @@ function truncateText(value: string, max: number): string {
   return `${value.slice(0, Math.max(0, max - 1))}…`;
 }
 
+function omittedStub(apiId: string, value: string) {
+  const digest = fieldDigest(value);
+  return {
+    apiId,
+    length: digest.length,
+    sha256: digest.sha256,
+    omitted: true as const,
+  };
+}
+
+function fieldsRecord(data: unknown): Record<string, unknown> | null {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  const rec = data as Record<string, unknown>;
+  if (
+    rec.fields !== null &&
+    typeof rec.fields === "object" &&
+    !Array.isArray(rec.fields)
+  ) {
+    return rec.fields as Record<string, unknown>;
+  }
+  return rec;
+}
+
 /**
- * JSON for the model transcript. Keeps name/ok/summary; truncates bulky `data`.
+ * When get_entry (or any FlatEntry-shaped result) overflows the budget,
+ * omit large string fields instead of slicing JSON.
+ */
+function compactEntryToolResult(
+  result: { name: string; ok: boolean; summary: string; data?: unknown; code?: string },
+  maxChars: number,
+): string {
+  const data =
+    result.data !== undefined
+      ? (structuredClone(result.data) as unknown)
+      : undefined;
+  const fields = fieldsRecord(data);
+  const stringFields: Array<{ apiId: string; value: string }> = [];
+  if (fields) {
+    for (const [apiId, value] of Object.entries(fields)) {
+      if (typeof value === "string") stringFields.push({ apiId, value });
+    }
+    stringFields.sort((a, b) => b.value.length - a.value.length);
+  }
+
+  const summary = `${truncateText(result.summary, 200)}. Large string fields omitted — use get_entry_field.`;
+  const payload = {
+    name: result.name,
+    ok: result.ok,
+    summary,
+    dataTruncated: true as const,
+    ...(result.code ? { code: result.code } : {}),
+    ...(data !== undefined ? { data } : {}),
+  };
+
+  for (const { apiId, value } of stringFields) {
+    if (JSON.stringify(payload).length <= maxChars) break;
+    if (fields) fields[apiId] = omittedStub(apiId, value);
+  }
+
+  let out = JSON.stringify(payload);
+  if (out.length > maxChars) {
+    out = JSON.stringify({
+      name: result.name,
+      ok: result.ok,
+      summary,
+      dataTruncated: true,
+      data: {
+        omitted: true,
+        reason: "entry exceeds context budget; use get_entry_field",
+      },
+    });
+  }
+  return out;
+}
+
+function looksLikeEntryData(data: unknown): boolean {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return false;
+  }
+  const rec = data as Record<string, unknown>;
+  return (
+    (typeof rec.id === "string" &&
+      rec.fields !== null &&
+      typeof rec.fields === "object") ||
+    Object.values(rec).some((v) => typeof v === "string" && v.length > 200)
+  );
+}
+
+/**
+ * JSON for the model transcript. Keeps name/ok/summary.
+ * `get_entry_field` is never sliced. `get_entry` omits large strings with hashes.
  */
 export function truncateToolResultForModel(
-  result: { name: string; ok: boolean; summary: string; data?: unknown },
+  result: { name: string; ok: boolean; summary: string; data?: unknown; code?: string },
   maxChars: number = resolveToolResultMaxChars(),
 ): string {
+  if (NEVER_SLICE_TOOL_RESULTS.has(result.name)) {
+    return JSON.stringify(result);
+  }
+
   const full = JSON.stringify(result);
   if (full.length <= maxChars) return full;
+
+  if (result.name === "get_entry" || looksLikeEntryData(result.data)) {
+    return compactEntryToolResult(result, maxChars);
+  }
 
   const summaryBudget = Math.min(500, Math.floor(maxChars * 0.2));
   const base = {
@@ -80,6 +184,7 @@ export function truncateToolResultForModel(
     ok: result.ok,
     summary: truncateText(result.summary, summaryBudget),
     dataTruncated: true as const,
+    ...(result.code ? { code: result.code } : {}),
   };
 
   const overhead = JSON.stringify({ ...base, data: "" }).length + 32;
@@ -103,7 +208,10 @@ export function truncateToolResultForModel(
     ...(dataPreview !== undefined ? { data: dataPreview } : {}),
   });
   if (out.length > maxChars) {
-    out = `${out.slice(0, maxChars - 1)}…`;
+    out = JSON.stringify({
+      ...base,
+      data: { omitted: true, reason: "tool result exceeds context budget" },
+    });
   }
   return out;
 }

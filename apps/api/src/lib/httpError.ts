@@ -21,7 +21,9 @@ export type ApiErrorCode =
   | "PASSWORD_FIELD_NOT_FOUND"
   | "PASSWORD_NOT_SET"
   | "USERNAME_FIELD_NOT_FOUND"
-  | "INVALID_CREDENTIALS";
+  | "INVALID_CREDENTIALS"
+  | "STALE_HASH"
+  | "FIELD_TOO_LARGE";
 
 export type ApiIssue = {
   path: Array<string | number>;

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { applyEntryFieldEdits } from "./fieldEdits.js";
+import { fieldDigest } from "./fieldHash.js";
 
 function makeTx(overrides: {
   definitions?: Array<{ id: string; apiId: string; type: string }>;
@@ -47,7 +48,12 @@ describe("applyEntryFieldEdits", () => {
 
     expect(summary).toEqual({
       applied: 1,
-      fields: { body: { length: "Hello earth".length } },
+      fields: {
+        body: {
+          length: "Hello earth".length,
+          sha256: fieldDigest("Hello earth").sha256,
+        },
+      },
     });
     expect(tx.entryFieldValue.upsert).toHaveBeenCalledOnce();
   });
@@ -155,5 +161,45 @@ describe("applyEntryFieldEdits", () => {
 
     expect(summary.applied).toBe(2);
     expect(summary.fields.body.length).toBe("xx yy xx".length);
+  });
+
+  it("returns 409 STALE_HASH and does not write (C1)", async () => {
+    const tx = makeTx({
+      definitions: [{ id: "f1", apiId: "body", type: "textarea" }],
+      values: { f1: "Hello world" },
+    });
+
+    await expect(
+      applyEntryFieldEdits(tx as never, {
+        entryId: "e1",
+        contentTypeId: "ct1",
+        fieldEdits: {
+          body: [{ old_string: "world", new_string: "earth" }],
+        },
+        expectedHashes: { body: "a".repeat(64) },
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      apiCode: "STALE_HASH",
+    });
+    expect(tx.entryFieldValue.upsert).not.toHaveBeenCalled();
+  });
+
+  it("applies when the expected hash matches (C2, G1 hash-less still works above)", async () => {
+    const tx = makeTx({
+      definitions: [{ id: "f1", apiId: "body", type: "textarea" }],
+      values: { f1: "Hello world" },
+    });
+
+    const summary = await applyEntryFieldEdits(tx as never, {
+      entryId: "e1",
+      contentTypeId: "ct1",
+      fieldEdits: {
+        body: [{ old_string: "world", new_string: "earth" }],
+      },
+      expectedHashes: { body: fieldDigest("Hello world").sha256 },
+    });
+
+    expect(summary.fields.body.sha256).toBe(fieldDigest("Hello earth").sha256);
   });
 });

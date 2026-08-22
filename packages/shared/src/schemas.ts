@@ -229,16 +229,98 @@ export type FieldEdits = z.infer<typeof FieldEditsSchema>;
 
 export const FieldEditSummarySchema = z.object({
   applied: z.number().int().nonnegative(),
-  fields: z.record(z.object({ length: z.number().int().nonnegative() })),
+  fields: z.record(
+    z.object({
+      length: z.number().int().nonnegative(),
+      sha256: z.string().optional(),
+    }),
+  ),
 });
 
 export type FieldEditSummary = z.infer<typeof FieldEditSummarySchema>;
 
+export const JsonEditOpSchema = z
+  .object({
+    path: z.string(),
+    match: z.record(z.unknown()),
+    op: z.enum([
+      "insert_after",
+      "insert_before",
+      "replace",
+      "replace_object",
+      "remove",
+    ]),
+    value: z.unknown().optional(),
+  })
+  .superRefine((op, ctx) => {
+    if (op.op !== "remove" && op.value === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "value is required for this json_edits op",
+        path: ["value"],
+      });
+    }
+  });
+
+export type JsonEditOp = z.infer<typeof JsonEditOpSchema>;
+
+export const JsonEditsSchema = z
+  .record(z.string().min(1), z.array(JsonEditOpSchema).min(1))
+  .refine((record) => Object.keys(record).length > 0, {
+    message: "json_edits must include at least one field",
+  });
+
+export type JsonEdits = z.infer<typeof JsonEditsSchema>;
+
+export const JsonEditSummarySchema = z.object({
+  applied: z.number().int().nonnegative(),
+  fields: z.record(
+    z.object({
+      length: z.number().int().nonnegative(),
+      sha256: z.string().optional(),
+    }),
+  ),
+});
+
+export type JsonEditSummary = z.infer<typeof JsonEditSummarySchema>;
+
+export const ExpectedFieldHashesSchema = z.record(
+  z.string().min(1),
+  z.string().regex(/^[a-f0-9]{64}$/i, "expected hash must be 64 hex characters"),
+);
+
+export const EntryFieldReadSchema = z.object({
+  entryId: z.string(),
+  fieldApiId: z.string(),
+  value: z.string(),
+  length: z.number().int().nonnegative(),
+  sha256: z.string(),
+  byteLength: z.number().int().nonnegative().optional(),
+  truncated: z.literal(false),
+  updatedAt: z.string(),
+});
+
+export type EntryFieldRead = z.infer<typeof EntryFieldReadSchema>;
+
 export const PatchEntryResponseSchema = FlatEntrySchema.extend({
   fieldEditSummary: FieldEditSummarySchema.optional(),
+  jsonEditSummary: JsonEditSummarySchema.optional(),
 });
 
 export type PatchEntryResponse = z.infer<typeof PatchEntryResponseSchema>;
+
+function addOverlapIssue(
+  ctx: z.RefinementCtx,
+  left: string,
+  right: string,
+  apiId: string,
+) {
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: `Cannot send both ${left}.${apiId} and ${right}.${apiId}`,
+    path: [right, apiId],
+  });
+}
 
 export const UpdateEntrySchema = z
   .object({
@@ -251,16 +333,26 @@ export const UpdateEntrySchema = z
     status: EntryStatusSchema.optional(),
     fields: z.record(z.unknown()).optional(),
     field_edits: FieldEditsSchema.optional(),
+    json_edits: JsonEditsSchema.optional(),
+    expected_field_hashes: ExpectedFieldHashesSchema.optional(),
   })
   .superRefine((data, ctx) => {
-    if (!data.fields || !data.field_edits) return;
-    for (const apiId of Object.keys(data.field_edits)) {
-      if (Object.prototype.hasOwnProperty.call(data.fields, apiId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Cannot send both fields.${apiId} and field_edits.${apiId}`,
-          path: ["field_edits", apiId],
-        });
+    const fieldKeys = data.fields ? Object.keys(data.fields) : [];
+    const editKeys = data.field_edits ? Object.keys(data.field_edits) : [];
+    const jsonKeys = data.json_edits ? Object.keys(data.json_edits) : [];
+    const fieldSet = new Set(fieldKeys);
+
+    for (const apiId of editKeys) {
+      if (fieldSet.has(apiId)) {
+        addOverlapIssue(ctx, "fields", "field_edits", apiId);
+      }
+    }
+    for (const apiId of jsonKeys) {
+      if (fieldSet.has(apiId)) {
+        addOverlapIssue(ctx, "fields", "json_edits", apiId);
+      }
+      if (data.field_edits && Object.prototype.hasOwnProperty.call(data.field_edits, apiId)) {
+        addOverlapIssue(ctx, "field_edits", "json_edits", apiId);
       }
     }
   });

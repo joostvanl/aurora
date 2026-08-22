@@ -21,6 +21,7 @@ import type {
   VerifyEntryCredentialsInput,
   VerifyEntryPasswordInput,
   PatchEntryResponse,
+  EntryFieldRead,
 } from "./schemas.js";
 import type {
   CreateScheduledTaskInput,
@@ -562,6 +563,14 @@ export class CmsClient {
   getAdminEntry(apiId: string, entryId: string) {
     return this.request<FlatEntry>(
       `/api/v1/admin/content-types/${apiId}/entries/by-id/${entryId}`,
+      {},
+      { auth: true },
+    );
+  }
+
+  getAdminEntryField(apiId: string, entryId: string, fieldApiId: string) {
+    return this.request<EntryFieldRead>(
+      `/api/v1/admin/content-types/${apiId}/entries/${entryId}/fields/${encodeURIComponent(fieldApiId)}`,
       {},
       { auth: true },
     );
