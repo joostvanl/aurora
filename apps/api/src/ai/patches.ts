@@ -1,6 +1,6 @@
-/** Normalize CRLF to LF before literal string matching. */
+/** Normalize CRLF and lone CR to LF before hashing or literal string matching. */
 export function normalizeNewlines(value: string): string {
-  return value.replace(/\r\n/g, "\n");
+  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
 /**

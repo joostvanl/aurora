@@ -34,6 +34,11 @@ import {
   applyEntryFieldEdits,
   lockEntryForUpdate,
 } from "../lib/fieldEdits.js";
+import { applyEntryJsonEdits } from "../lib/jsonEdits.js";
+import {
+  assertExpectedFieldHashes,
+  readEntryStringField,
+} from "../lib/entryField.js";
 import { serializeContentType, serializeEntry } from "../lib/serialize.js";
 import {
   assertRelatedContentType,
@@ -700,6 +705,20 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     );
 
+    admin.get<{ Params: { apiId: string; entryId: string; fieldApiId: string } }>(
+      "/api/v1/admin/content-types/:apiId/entries/:entryId/fields/:fieldApiId",
+      async (request) => {
+        const websiteId = websiteIdFrom(request);
+        const ct = await getContentTypeOrThrow(request.params.apiId, websiteId);
+        return readEntryStringField({
+          websiteId,
+          contentTypeId: ct.id,
+          entryId: request.params.entryId,
+          fieldApiId: request.params.fieldApiId,
+        });
+      },
+    );
+
     admin.post<{ Params: { apiId: string; entryId: string } }>(
       "/api/v1/admin/content-types/:apiId/entries/:entryId/preview-token",
       async (request) => {
@@ -950,9 +969,18 @@ export async function registerRoutes(app: FastifyInstance) {
         let fieldEditSummary:
           | Awaited<ReturnType<typeof applyEntryFieldEdits>>
           | undefined;
+        let jsonEditSummary:
+          | Awaited<ReturnType<typeof applyEntryJsonEdits>>
+          | undefined;
 
         await prisma.$transaction(async (tx) => {
           await lockEntryForUpdate(tx, existing.id);
+
+          await assertExpectedFieldHashes(tx, {
+            entryId: existing.id,
+            contentTypeId: ct.id,
+            hashes: body.expected_field_hashes,
+          });
 
           await tx.entry.update({
             where: { id: existing.id },
@@ -966,6 +994,14 @@ export async function registerRoutes(app: FastifyInstance) {
                   : null,
             },
           });
+
+          if (body.json_edits) {
+            jsonEditSummary = await applyEntryJsonEdits(tx, {
+              entryId: existing.id,
+              contentTypeId: ct.id,
+              jsonEdits: body.json_edits,
+            });
+          }
 
           if (body.field_edits) {
             fieldEditSummary = await applyEntryFieldEdits(tx, {
@@ -1019,6 +1055,7 @@ export async function registerRoutes(app: FastifyInstance) {
         return {
           ...serializeEntry(full),
           ...(fieldEditSummary ? { fieldEditSummary } : {}),
+          ...(jsonEditSummary ? { jsonEditSummary } : {}),
         };
       },
     );

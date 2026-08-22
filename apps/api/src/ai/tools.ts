@@ -39,6 +39,14 @@ import {
   applyEntryFieldEdits,
   lockEntryForUpdate,
 } from "../lib/fieldEdits.js";
+import { applyEntryJsonEdits } from "../lib/jsonEdits.js";
+import {
+  AI_ENTRY_FIELD_MAX_CHARS,
+  assertExpectedFieldHashes,
+  entryFieldForAi,
+  readEntryStringField,
+} from "../lib/entryField.js";
+import type { JsonEditOp } from "@cms/shared";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
 import { getCurrentDateTime } from "./currentTime.js";
@@ -115,9 +123,11 @@ export const RESTORE_TOOLS = new Set([
 export const ENTRY_CONTENT_TOOLS = new Set([
   "create_entry",
   "get_entry",
+  "get_entry_field",
   "list_entries",
   "str_replace",
   "write_field",
+  "patch_json_field",
   "publish_entry",
   "unpublish_entry",
   "delete_entry",
@@ -172,6 +182,7 @@ export type ToolResult = {
   ok: boolean;
   summary: string;
   data?: unknown;
+  code?: string;
 };
 
 /** Payload passed to the optional audit hook after a successful mutation. */
@@ -426,6 +437,24 @@ export const aiTools: ChatTool[] = [
   {
     type: "function",
     function: {
+      name: "get_entry_field",
+      description:
+        "Read one string field in full (any content type). Returns value, length, and sha256. Use this before editing large text. After any string mutate, call again before claiming success. Never treat a truncated get_entry as the full field. If the result is FIELD_TOO_LARGE, do not invent a slice — stop or use HTTP/MCP.",
+      parameters: {
+        type: "object",
+        properties: {
+          contentTypeApiId: { type: "string" },
+          entryId: { type: "string" },
+          fieldApiId: { type: "string" },
+        },
+        required: ["contentTypeApiId", "entryId", "fieldApiId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "create_entry",
       description:
         "Create a new CMS entry immediately (required when the user asks to create/write/make a page or post). Pass field values in `fields` in the same call — do not only draft text in chat. Prefer contentTypeApiId \"page\" for pages and \"post\" for blog posts. Richtext values must be HTML, never Markdown. Omit locale to use the website defaultLocale — never invent unsupported locales like en-US.",
@@ -452,7 +481,7 @@ export const aiTools: ChatTool[] = [
     function: {
       name: "str_replace",
       description:
-        "Find/replace inside a string field value (Cursor-style). Prefer this over rewriting whole fields. old_string must be unique unless replace_all=true. For richtext fields, old_string/new_string must be HTML (never Markdown).",
+        "Find/replace inside a string field value (Cursor-style). Prefer this over rewriting whole fields. old_string must be unique unless replace_all=true. For richtext fields, old_string/new_string must be HTML (never Markdown). Always send expected_field_hash from get_entry_field. Tool ok:true is not user-goal success — re-read with get_entry_field. If the stored value is JSON, prefer patch_json_field. On a miss, do not retry guessed anchors.",
       parameters: {
         type: "object",
         properties: {
@@ -462,6 +491,11 @@ export const aiTools: ChatTool[] = [
           old_string: { type: "string" },
           new_string: { type: "string" },
           replace_all: { type: "boolean" },
+          expected_field_hash: {
+            type: "string",
+            description:
+              "sha256 from get_entry_field (required after a field read; 409 STALE_HASH if the field changed)",
+          },
         },
         required: [
           "contentTypeApiId",
@@ -479,7 +513,7 @@ export const aiTools: ChatTool[] = [
     function: {
       name: "write_field",
       description:
-        "Write/replace an entire field value. Use only when the field is empty or a full rewrite is necessary. Prefer str_replace for edits. For richtext fields, value MUST be HTML (e.g. <p>…</p>), never Markdown.",
+        "Write/replace an entire field value. Use only when the field is empty or a full rewrite is necessary. Prefer str_replace for prose and patch_json_field when the current value is JSON. For richtext fields, value MUST be HTML (e.g. <p>…</p>), never Markdown. Always send expected_field_hash from get_entry_field. Re-read with get_entry_field before claiming success.",
       parameters: {
         type: "object",
         properties: {
@@ -487,8 +521,62 @@ export const aiTools: ChatTool[] = [
           entryId: { type: "string" },
           fieldApiId: { type: "string" },
           value: {},
+          expected_field_hash: {
+            type: "string",
+            description:
+              "sha256 from get_entry_field (required after a field read; 409 STALE_HASH if the field changed)",
+          },
         },
         required: ["contentTypeApiId", "entryId", "fieldApiId", "value"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "patch_json_field",
+      description:
+        "Structurally edit a string field whose current value is JSON. path is a JSON Pointer that must resolve to an array of objects; match selects exactly one object. Prefer this over str_replace when the value is JSON. Always send expected_field_hash from get_entry_field. Re-read with get_entry_field before claiming success.",
+      parameters: {
+        type: "object",
+        properties: {
+          contentTypeApiId: { type: "string" },
+          entryId: { type: "string" },
+          fieldApiId: { type: "string" },
+          path: {
+            type: "string",
+            description:
+              "JSON Pointer to an array (e.g. \"/items\"). Property-only paths are rejected.",
+          },
+          match: {
+            type: "object",
+            additionalProperties: true,
+            description: "Selects exactly one object in the array",
+          },
+          op: {
+            type: "string",
+            enum: [
+              "insert_after",
+              "insert_before",
+              "replace",
+              "replace_object",
+              "remove",
+            ],
+          },
+          value: {
+            description: "Required except for remove",
+          },
+          expected_field_hash: { type: "string" },
+        },
+        required: [
+          "contentTypeApiId",
+          "entryId",
+          "fieldApiId",
+          "path",
+          "match",
+          "op",
+        ],
         additionalProperties: false,
       },
     },
@@ -1583,6 +1671,37 @@ export async function executeAiTool(
           data: serializeEntry(entry),
         };
       }
+      case "get_entry_field": {
+        const contentTypeApiId = str(rawArgs, "contentTypeApiId");
+        const entryId = str(rawArgs, "entryId");
+        const fieldApiId = str(rawArgs, "fieldApiId");
+        if (!contentTypeApiId || !entryId || !fieldApiId) {
+          throw new Error("contentTypeApiId, entryId, fieldApiId required");
+        }
+        const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        const field = await readEntryStringField({
+          websiteId,
+          contentTypeId: ct.id,
+          entryId,
+          fieldApiId,
+        });
+        const shaped = entryFieldForAi(field);
+        if (!shaped.ok) {
+          return {
+            name,
+            ok: false,
+            code: "FIELD_TOO_LARGE",
+            summary: `Field ${fieldApiId} is ${field.length} characters (limit ${AI_ENTRY_FIELD_MAX_CHARS}). Use HTTP/MCP get_entry_field. Do not invent a sliced value.`,
+            data: shaped.data,
+          };
+        }
+        return {
+          name,
+          ok: true,
+          summary: `Loaded ${contentTypeApiId}.${fieldApiId} (${field.length} chars)`,
+          data: shaped.data,
+        };
+      }
       case "create_entry": {
         const contentTypeApiId = str(rawArgs, "contentTypeApiId");
         const slug = str(rawArgs, "slug");
@@ -1694,6 +1813,7 @@ export async function executeAiTool(
         if (!entry) throw new Error("Entry not found");
 
         const nextStatus = entry.status;
+        const expectedHash = str(rawArgs, "expected_field_hash");
         const fieldEditSummary = await prisma.$transaction(async (tx) => {
           await lockEntryForUpdate(tx, entry.id);
           await tx.entry.update({
@@ -1717,6 +1837,9 @@ export async function executeAiTool(
                 },
               ],
             },
+            ...(expectedHash
+              ? { expectedHashes: { [fieldApiId]: expectedHash } }
+              : {}),
           });
         });
 
@@ -1767,8 +1890,24 @@ export async function executeAiTool(
           where: { id: entryId, contentTypeId: ct.id },
         });
         if (!entry) throw new Error("Entry not found");
-        await setEntryFields(entry.id, ct.id, {
-          [fieldApiId]: asRecord(rawArgs).value,
+        const expectedHash = str(rawArgs, "expected_field_hash");
+        await prisma.$transaction(async (tx) => {
+          await lockEntryForUpdate(tx, entry.id);
+          if (expectedHash) {
+            await assertExpectedFieldHashes(tx, {
+              entryId: entry.id,
+              contentTypeId: ct.id,
+              hashes: { [fieldApiId]: expectedHash },
+            });
+          }
+          await setEntryFields(
+            entry.id,
+            ct.id,
+            { [fieldApiId]: asRecord(rawArgs).value },
+            websiteId,
+            entry.locale,
+            tx,
+          );
         });
         const full = await prisma.entry.findUniqueOrThrow({
           where: { id: entry.id },
@@ -1791,6 +1930,92 @@ export async function executeAiTool(
           ok: true,
           summary: `Wrote ${contentTypeApiId}/${entry.slug}.${fieldApiId}`,
           data: serializeEntry(full),
+        };
+      }
+      case "patch_json_field": {
+        const contentTypeApiId = str(rawArgs, "contentTypeApiId");
+        const entryId = str(rawArgs, "entryId");
+        const fieldApiId = str(rawArgs, "fieldApiId");
+        const path = str(rawArgs, "path");
+        const op = str(rawArgs, "op") as JsonEditOp["op"] | undefined;
+        const matchRaw = asRecord(rawArgs).match;
+        if (
+          !contentTypeApiId ||
+          !entryId ||
+          !fieldApiId ||
+          path === undefined ||
+          !op
+        ) {
+          throw new Error(
+            "contentTypeApiId, entryId, fieldApiId, path, match, op required",
+          );
+        }
+        if (
+          matchRaw === undefined ||
+          typeof matchRaw !== "object" ||
+          matchRaw === null ||
+          Array.isArray(matchRaw)
+        ) {
+          throw new Error("match must be an object");
+        }
+        if (op !== "remove" && !("value" in asRecord(rawArgs))) {
+          throw new Error("value required unless op is remove");
+        }
+        await ensureSnapshot(entryId);
+        const ct = await getContentTypeOrThrow(contentTypeApiId, websiteId);
+        const entry = await prisma.entry.findFirst({
+          where: { id: entryId, contentTypeId: ct.id },
+        });
+        if (!entry) throw new Error("Entry not found");
+        const expectedHash = str(rawArgs, "expected_field_hash");
+        const jsonOp: JsonEditOp = {
+          path,
+          match: matchRaw as Record<string, unknown>,
+          op,
+          ...(op === "remove" ? {} : { value: asRecord(rawArgs).value }),
+        };
+        const jsonEditSummary = await prisma.$transaction(async (tx) => {
+          await lockEntryForUpdate(tx, entry.id);
+          return applyEntryJsonEdits(tx, {
+            entryId: entry.id,
+            contentTypeId: ct.id,
+            jsonEdits: { [fieldApiId]: [jsonOp] },
+            ...(expectedHash
+              ? { expectedHashes: { [fieldApiId]: expectedHash } }
+              : {}),
+          });
+        });
+        const full = await prisma.entry.findUniqueOrThrow({
+          where: { id: entry.id },
+          include: entryInclude,
+        });
+        await createEntryVersion({
+          entryId: full.id,
+          source: "ai",
+          createdByUserId,
+          actorKind: "ai",
+          changeSummary: "Entry updated (patch_json_field)",
+        });
+        await hooks.emit("onEntryUpdate", {
+          entryId: full.id,
+          contentTypeApiId: ct.apiId,
+          slug: full.slug,
+        });
+        await auditMutation({
+          action: "entry.update",
+          resourceType: "entry",
+          resourceId: full.id,
+          summary: `Updated entry ${full.slug}`,
+          meta: { contentTypeApiId: ct.apiId, fieldApiId },
+        });
+        return {
+          name,
+          ok: true,
+          summary: `Patched JSON ${contentTypeApiId}/${entry.slug}.${fieldApiId}`,
+          data: {
+            ...serializeEntry(full),
+            jsonEditSummary,
+          },
         };
       }
       case "update_entry_meta": {
@@ -2700,6 +2925,7 @@ export async function executeAiTool(
       name,
       ok: false,
       summary,
+      ...(apiCode ? { code: apiCode } : {}),
     };
   }
 }

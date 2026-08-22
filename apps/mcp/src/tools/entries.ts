@@ -55,6 +55,25 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
   );
 
   server.tool(
+    "get_entry_field",
+    "Read one string field in full (any content type). Returns value, length, sha256. Always re-read after a mutate before claiming success.",
+    {
+      apiId: z.string().min(1),
+      entryId: z.string().min(1),
+      fieldApiId: z.string().min(1),
+    },
+    async ({ apiId, entryId, fieldApiId }) => {
+      try {
+        return toolOk(
+          await client.getAdminEntryField(apiId, entryId, fieldApiId),
+        );
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
     "create_entry",
     "Create an entry. Values go in fields keyed by field apiId.",
     {
@@ -83,6 +102,38 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       locale: z.string().optional(),
       status: z.enum(["draft", "published"]).optional(),
       fields: z.record(z.unknown()).optional(),
+      field_edits: z
+        .record(
+          z.string().min(1),
+          z.array(
+            z.object({
+              old_string: z.string().min(1),
+              new_string: z.string(),
+              replace_all: z.boolean().optional(),
+            }),
+          ),
+        )
+        .optional(),
+      json_edits: z
+        .record(
+          z.string().min(1),
+          z.array(
+            z.object({
+              path: z.string(),
+              match: z.record(z.unknown()),
+              op: z.enum([
+                "insert_after",
+                "insert_before",
+                "replace",
+                "replace_object",
+                "remove",
+              ]),
+              value: z.unknown().optional(),
+            }),
+          ),
+        )
+        .optional(),
+      expected_field_hashes: z.record(z.string().min(1), z.string()).optional(),
     },
     async ({ apiId, entryId, ...input }) => {
       try {
@@ -149,12 +200,16 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       entryId: z.string().min(1),
       fieldApiId: z.string().min(1),
       value: z.unknown(),
+      expected_field_hash: z.string().optional(),
     },
-    async ({ apiId, entryId, fieldApiId, value }) => {
+    async ({ apiId, entryId, fieldApiId, value, expected_field_hash }) => {
       try {
         return toolOk(
           await client.updateEntry(apiId, entryId, {
             fields: { [fieldApiId]: value },
+            ...(expected_field_hash
+              ? { expected_field_hashes: { [fieldApiId]: expected_field_hash } }
+              : {}),
           }),
         );
       } catch (err) {
@@ -173,6 +228,7 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       oldString: z.string().min(1),
       newString: z.string(),
       replaceAll: z.boolean().optional(),
+      expected_field_hash: z.string().optional(),
     },
     async ({
       apiId,
@@ -181,6 +237,7 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
       oldString,
       newString,
       replaceAll,
+      expected_field_hash,
     }) => {
       try {
         const updated = await client.updateEntry(apiId, entryId, {
@@ -193,11 +250,67 @@ export function registerEntryTools(server: McpServer, ctx: McpContext) {
               },
             ],
           },
+          ...(expected_field_hash
+            ? { expected_field_hashes: { [fieldApiId]: expected_field_hash } }
+            : {}),
         });
         return toolOk({
           replaced: updated.fieldEditSummary?.applied ?? 1,
           entry: updated,
         });
+      } catch (err) {
+        return toolError(err);
+      }
+    },
+  );
+
+  server.tool(
+    "patch_json_field",
+    "Structurally edit a string field whose current value is JSON. path must point to an array of objects; match selects exactly one object. Prefer this over str_replace_field when the value is JSON.",
+    {
+      apiId: z.string().min(1),
+      entryId: z.string().min(1),
+      fieldApiId: z.string().min(1),
+      path: z.string(),
+      match: z.record(z.unknown()),
+      op: z.enum([
+        "insert_after",
+        "insert_before",
+        "replace",
+        "replace_object",
+        "remove",
+      ]),
+      value: z.unknown().optional(),
+      expected_field_hash: z.string().optional(),
+    },
+    async ({
+      apiId,
+      entryId,
+      fieldApiId,
+      path,
+      match,
+      op,
+      value,
+      expected_field_hash,
+    }) => {
+      try {
+        return toolOk(
+          await client.updateEntry(apiId, entryId, {
+            json_edits: {
+              [fieldApiId]: [
+                {
+                  path,
+                  match,
+                  op,
+                  ...(op === "remove" ? {} : { value }),
+                },
+              ],
+            },
+            ...(expected_field_hash
+              ? { expected_field_hashes: { [fieldApiId]: expected_field_hash } }
+              : {}),
+          }),
+        );
       } catch (err) {
         return toolError(err);
       }

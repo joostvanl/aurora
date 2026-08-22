@@ -21,19 +21,43 @@ describe("contextBudget", () => {
     ).toBe(2000);
   });
 
-  it("truncates bulky tool data while keeping summary", () => {
+  it("omits large get_entry strings with hashes instead of slicing (R5)", () => {
+    const body = "x".repeat(20_000);
     const result = {
       name: "get_entry",
       ok: true,
       summary: "Fetched entry",
-      data: { body: "x".repeat(20_000) },
+      data: {
+        id: "e1",
+        slug: "hello",
+        fields: { title: "Hi", body },
+      },
     };
     const out = truncateToolResultForModel(result, 1_000);
     expect(out.length).toBeLessThanOrEqual(1_000);
-    expect(out).toContain("get_entry");
-    expect(out).toContain("Fetched entry");
-    expect(out).toContain("dataTruncated");
-    expect(out.length).toBeLessThan(JSON.stringify(result).length);
+    const parsed = JSON.parse(out) as {
+      dataTruncated?: boolean;
+      data?: { fields?: { body?: { omitted?: boolean; sha256?: string; length?: number } } };
+    };
+    expect(parsed.dataTruncated).toBe(true);
+    expect(parsed.data?.fields?.body?.omitted).toBe(true);
+    expect(parsed.data?.fields?.body?.length).toBe(20_000);
+    expect(parsed.data?.fields?.body?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(out).not.toContain("xxx");
+    expect(out.endsWith("…")).toBe(false);
+  });
+
+  it("never slices get_entry_field even when over the 6k cap", () => {
+    const value = "y".repeat(8_000);
+    const result = {
+      name: "get_entry_field",
+      ok: true,
+      summary: "Loaded field",
+      data: { value, truncated: false },
+    };
+    const out = truncateToolResultForModel(result, 1_000);
+    expect(out.length).toBeGreaterThan(8_000);
+    expect(JSON.parse(out).data.value).toBe(value);
   });
 
   it("passes through small tool results unchanged", () => {

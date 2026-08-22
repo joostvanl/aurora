@@ -5,6 +5,10 @@ describe("normalizeNewlines", () => {
   it("converts CRLF to LF", () => {
     expect(normalizeNewlines("a\r\nb")).toBe("a\nb");
   });
+
+  it("converts lone CR to LF", () => {
+    expect(normalizeNewlines("a\rb\r\nc")).toBe("a\nb\nc");
+  });
 });
 
 describe("applyStrReplace", () => {

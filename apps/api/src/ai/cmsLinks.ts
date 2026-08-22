@@ -80,8 +80,10 @@ function formFromData(data: unknown): StudioFormLink | null {
 const ENTRY_TOOLS = new Set([
   "create_entry",
   "get_entry",
+  "get_entry_field",
   "str_replace",
   "write_field",
+  "patch_json_field",
   "update_entry_meta",
   "publish_entry",
   "unpublish_entry",
