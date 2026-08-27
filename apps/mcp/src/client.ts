@@ -110,8 +110,74 @@ export function whoamiSnapshot(ctx: McpContext) {
   };
 }
 
+export type McpContextInput = {
+  apiUrl: string;
+  token: string;
+  /** Stdio pin (`CMS_WEBSITE_ID`). HTTP leaves this unset so `/auth/me` lastSelected can apply. */
+  websiteId?: string | null;
+  siteKey?: string | null;
+};
+
 /**
- * Fail-fast auth gate.
+ * Build MCP context from an explicit API URL + token (stdio env wrapper or hosted HTTP).
+ */
+export async function createMcpContextFromToken(
+  input: McpContextInput,
+): Promise<McpContext> {
+  const apiUrl = input.apiUrl.trim().replace(/\/$/, "");
+  if (!apiUrl) {
+    throw new Error(
+      "Missing API URL for Aurora MCP context. Set CMS_API_URL (stdio) or CMS_MCP_UPSTREAM_URL (hosted).",
+    );
+  }
+
+  const token = input.token.trim();
+  if (!token) {
+    throw new Error(
+      "Missing Aurora token (aur_u_… personal access token or aur_… website token).",
+    );
+  }
+
+  const authMode: McpAuthMode = token.startsWith("aur_u_")
+    ? "user_pat"
+    : "website_token";
+
+  if (authMode === "website_token" && !token.startsWith("aur_")) {
+    console.error(
+      "[aurora-mcp] Warning: Token does not start with aur_ / aur_u_. Prefer a personal access token from Studio → Settings → Personal access tokens.",
+    );
+  }
+
+  const client = createCmsClient({
+    baseUrl: apiUrl,
+    token,
+    siteKey: input.siteKey?.trim() || null,
+  });
+
+  const ctx: McpContext = {
+    apiUrl,
+    userToken: token,
+    sessionToken: null,
+    authMode,
+    client,
+    user: null,
+    website: null,
+    role: null,
+    memberships: [],
+    publicEnabled: false,
+  };
+
+  if (authMode === "website_token") {
+    await bootstrapLegacyWebsiteToken(ctx, input.websiteId);
+  } else {
+    await bootstrapUserPat(ctx, input.websiteId);
+  }
+
+  return ctx;
+}
+
+/**
+ * Fail-fast auth gate for stdio.
  * Prefer CMS_USER_TOKEN (aur_u_…); legacy CMS_MANAGEMENT_TOKEN (aur_…) still supported.
  */
 export async function createMcpContext(): Promise<McpContext> {
@@ -131,50 +197,24 @@ export async function createMcpContext(): Promise<McpContext> {
     );
   }
 
-  const authMode: McpAuthMode = token.startsWith("aur_u_")
-    ? "user_pat"
-    : "website_token";
-
   if (userPat && !userPat.startsWith("aur_u_")) {
     console.error(
       "[aurora-mcp] Warning: CMS_USER_TOKEN should start with aur_u_. Falling back to website-token bootstrap if applicable.",
     );
   }
-  if (authMode === "website_token" && !token.startsWith("aur_")) {
-    console.error(
-      "[aurora-mcp] Warning: Token does not start with aur_ / aur_u_. Prefer CMS_USER_TOKEN from Studio → Settings → Personal access tokens.",
-    );
-  }
 
-  const client = createCmsClient({
-    baseUrl: apiUrl,
+  return createMcpContextFromToken({
+    apiUrl,
     token,
+    websiteId: process.env.CMS_WEBSITE_ID?.trim() || null,
     siteKey: process.env.CMS_SITE_KEY?.trim() || null,
   });
-
-  const ctx: McpContext = {
-    apiUrl,
-    userToken: token,
-    sessionToken: null,
-    authMode,
-    client,
-    user: null,
-    website: null,
-    role: null,
-    memberships: [],
-    publicEnabled: false,
-  };
-
-  if (authMode === "website_token") {
-    await bootstrapLegacyWebsiteToken(ctx);
-  } else {
-    await bootstrapUserPat(ctx);
-  }
-
-  return ctx;
 }
 
-async function bootstrapLegacyWebsiteToken(ctx: McpContext): Promise<void> {
+async function bootstrapLegacyWebsiteToken(
+  ctx: McpContext,
+  websitePin?: string | null,
+): Promise<void> {
   let website: WebsiteDetails;
   try {
     website = await ctx.client.getWebsite();
@@ -186,7 +226,7 @@ async function bootstrapLegacyWebsiteToken(ctx: McpContext): Promise<void> {
     );
   }
 
-  const pin = process.env.CMS_WEBSITE_ID?.trim();
+  const pin = websitePin?.trim();
   if (pin && pin !== website.id) {
     throw new Error(
       `CMS_WEBSITE_ID pin mismatch: env=${pin} tokenWebsite=${website.id} (${website.name}). ` +
@@ -210,7 +250,10 @@ async function bootstrapLegacyWebsiteToken(ctx: McpContext): Promise<void> {
   );
 }
 
-async function bootstrapUserPat(ctx: McpContext): Promise<void> {
+async function bootstrapUserPat(
+  ctx: McpContext,
+  websitePin?: string | null,
+): Promise<void> {
   let me: Awaited<ReturnType<CmsClient["me"]>>;
   try {
     me = await ctx.client.me();
@@ -225,7 +268,7 @@ async function bootstrapUserPat(ctx: McpContext): Promise<void> {
   ctx.user = me.user;
   ctx.memberships = me.websites;
 
-  const preferred = process.env.CMS_WEBSITE_ID?.trim();
+  const preferred = websitePin?.trim();
   let targetId: string | null = null;
   if (preferred) {
     if (!me.websites.some((w) => w.id === preferred)) {

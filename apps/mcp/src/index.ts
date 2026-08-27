@@ -4,7 +4,8 @@
  *
  * Required env:
  *   CMS_API_URL              — e.g. http://localhost:4000
- *   CMS_MANAGEMENT_TOKEN     — website-scoped aur_… token
+ *   CMS_USER_TOKEN           — preferred aur_u_… personal access token
+ *   CMS_MANAGEMENT_TOKEN     — legacy website-scoped aur_… token
  * Optional:
  *   CMS_WEBSITE_ID           — pin; must match token website
  *   CMS_SITE_KEY             — must match token website for public tools

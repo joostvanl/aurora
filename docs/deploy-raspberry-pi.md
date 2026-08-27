@@ -20,11 +20,13 @@ nano .env   # fill secrets and public HTTPS URLs
 
 | Hostname | Service URL |
 |----------|-------------|
-| `aurora-api.<domain>` | `http://localhost:4000` |
+| `aurora-api.<domain>` | `http://localhost:4000` (includes hosted MCP at `/mcp`) |
 | `aurora-admin.<domain>` | `http://localhost:3001` |
 | `aurora.<domain>` | `http://localhost:3010` |
 
 Host `:3000` is avoided (often Grafana). Web listens on **3010** on the Pi loopback.
+
+Cloudflare / origin timeouts for `aurora-api` should be high enough for MCP tool calls (aim ≥ 100s). `/mcp` uses the same hostname as the rest of the API; no extra tunnel route.
 
 6. First start (or wait for the first Actions deploy):
 

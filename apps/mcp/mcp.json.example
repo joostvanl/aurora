@@ -1,6 +1,12 @@
 {
   "mcpServers": {
     "aurora": {
+      "url": "https://aurora-api.joostvanleeuwaarden.com/mcp",
+      "headers": {
+        "Authorization": "Bearer aur_u_YOUR_PERSONAL_TOKEN"
+      }
+    },
+    "aurora-stdio": {
       "command": "node",
       "args": ["REPLACE_WITH_ABSOLUTE_PATH/apps/mcp/dist/index.js"],
       "env": {

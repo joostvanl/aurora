@@ -12,16 +12,20 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY packages/tsconfig ./packages/tsconfig
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
+COPY apps/mcp/package.json ./apps/mcp/
 COPY apps/admin/package.json ./apps/admin/
 COPY apps/web/package.json ./apps/web/
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY packages/shared ./packages/shared
+COPY apps/mcp ./apps/mcp
 COPY apps/api ./apps/api
 RUN pnpm --filter @cms/shared build \
+  && pnpm --filter @cms/mcp build \
   && pnpm --filter @cms/api exec prisma generate \
-  && pnpm --filter @cms/api build
+  && pnpm --filter @cms/api build \
+  && mkdir -p /app/apps/mcp/node_modules /app/apps/api/node_modules
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -34,11 +38,14 @@ RUN apt-get update \
 COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build /app/packages/tsconfig ./packages/tsconfig
 COPY --from=build /app/packages/shared ./packages/shared
+COPY --from=build /app/apps/mcp/package.json ./apps/mcp/
+COPY --from=build /app/apps/mcp/dist ./apps/mcp/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/prisma ./apps/api/prisma
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build /app/apps/mcp/node_modules ./apps/mcp/node_modules
 COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY deploy/api-entrypoint.sh /app/apps/api/entrypoint.sh
 RUN chmod +x /app/apps/api/entrypoint.sh \

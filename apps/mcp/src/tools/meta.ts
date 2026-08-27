@@ -60,7 +60,7 @@ export function registerMetaTools(server: McpServer, ctx: McpContext) {
 
   server.tool(
     "select_website",
-    "Activate a website for this MCP session (issues a JWT with your membership role). Requires CMS_USER_TOKEN (aur_u_…). Re-select if the session JWT expires.",
+    "Activate a website for this MCP session (issues a JWT with your membership role). Requires a personal access token (aur_u_…). Re-select if the session JWT expires.",
     {
       websiteId: z.string().min(1).describe("Website id from list_websites"),
     },

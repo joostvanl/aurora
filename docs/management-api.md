@@ -2,7 +2,7 @@
 
 Use this when a **site-building agent** or automation must create and edit **content types** and **content** for an Aurora account.
 
-For Cursor / Claude Desktop, prefer the **[MCP server](./mcp.md)** (`apps/mcp`) which wraps this API over stdio with the same website-scoped `aur_…` token.
+For Cursor / Claude Desktop, prefer the **[MCP server](./mcp.md)** — hosted Streamable HTTP at `/mcp` on the API (Bearer `aur_u_…`), or local stdio (`apps/mcp`).
 
 Public frontends use only `x-site-key` (read). Management uses a **Bearer token** scoped to one website.
 

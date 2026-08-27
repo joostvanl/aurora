@@ -74,6 +74,9 @@ model User {
   entryVersions EntryVersion[]
   contentTypeVersions ContentTypeVersion[]
   auditEvents  AuditEvent[]
+  /** Last website chosen via select-website (MCP HTTP bootstrap + Studio). */
+  lastSelectedWebsiteId String?
+  lastSelectedWebsite   Website? @relation("UserLastSelectedWebsite", fields: [lastSelectedWebsiteId], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -103,6 +106,7 @@ model Website {
   contentRequestEvents ContentRequestEvent[]
   scheduledTasks ScheduledTask[]
   auditEvents  AuditEvent[]
+  lastSelectedByUsers User[] @relation("UserLastSelectedWebsite")
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }

@@ -7,6 +7,24 @@
     "aurora-mcp": "./dist/index.js"
   },
   "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/createServer.d.ts",
+      "import": "./dist/createServer.js"
+    },
+    "./createServer": {
+      "types": "./dist/createServer.d.ts",
+      "import": "./dist/createServer.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",

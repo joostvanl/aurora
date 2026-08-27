@@ -200,8 +200,16 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         where: { id: request.user!.id },
       });
       const websites = await listUserWebsites(user.id);
-      const active = request.user!.websiteId
-        ? websites.find((w) => w.id === request.user!.websiteId)
+      let activeId = request.user!.websiteId ?? null;
+      if (
+        !activeId &&
+        user.lastSelectedWebsiteId &&
+        websites.some((w) => w.id === user.lastSelectedWebsiteId)
+      ) {
+        activeId = user.lastSelectedWebsiteId;
+      }
+      const active = activeId
+        ? (websites.find((w) => w.id === activeId) ?? null)
         : null;
 
       return {
@@ -234,6 +242,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
       try {
         const authUser = await authUserForWebsite(user, body.websiteId);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastSelectedWebsiteId: body.websiteId },
+        });
         const token = await signAccessToken(authUser);
         const websites = await listUserWebsites(user.id);
         return {

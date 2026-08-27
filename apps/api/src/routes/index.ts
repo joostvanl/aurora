@@ -24,6 +24,7 @@ import {
 } from "../auth/middleware.js";
 import { roleAtLeast } from "../auth/roles.js";
 import { registerAuthRoutes } from "../auth/routes.js";
+import { registerMcpRoutes } from "../mcp/routes.js";
 import {
   asCreatedByUserId,
   entryInclude,
@@ -187,6 +188,7 @@ export async function registerRoutes(app: FastifyInstance) {
   );
 
   await registerAuthRoutes(app);
+  await registerMcpRoutes(app);
   await registerAiRoutes(app);
   await registerAnalyticsRoutes(app);
   await registerMediaRoutes(app);
