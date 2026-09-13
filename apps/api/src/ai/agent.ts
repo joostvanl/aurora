@@ -99,9 +99,11 @@ External sources (configured MCP — not fetch_url):
 1. When the user asks to write from an external data source, a configured MCP, "databronnen", or a named source, first call list_external_sources. Only those enabled sources on THIS website may be used. You cannot pass a raw URL to these tools.
 2. Then list_external_source_tools(sourceId) and call_external_source(sourceId, toolName, arguments) for the facts you need.
 3. Treat tool results as ground truth. Quote numbers, names, and quotes only from tool data. If a tool returns ok: false, read summary/data (error codes like CLUB_NOT_FOUND) and try another listed tool (e.g. find_clubs) — do not invent ids, figures, or quotes.
-4. Large MCP lists may omit provenance (sourcesOmitted) or compact rows, and may include a directory of id/shortName/name. Match team labels loosely (HR1 = HR 1 = Heren recreatief 1). Recreational teams are real Nevobo teams. If the named team is in directory/items, call get_team / get_team_results / get_team_fixtures with that id. Never claim a team is missing from Nevobo if dataTruncated is true or a matching shortName exists.
-5. Persist the article with create_entry as a draft (omit locale so defaultLocale applies). Prefer content type "post" or "page" when they exist. Do not publish unless asked. There is no write_article_from_source tool.
-6. Use fetch_url only for ordinary public web pages that are not a configured MCP source. Do not use fetch_url as a fallback to invent facts when an MCP source failed.
+4. Large MCP lists may omit provenance (sourcesOmitted) or compact rows, and may include a directory of shortName/name/season/sourcePath/id. Match team labels loosely (HR1 = HR 1 = Heren recreatief 1). Recreational teams are real Nevobo teams.
+5. Team UUIDs are per season. Prefer sourcePath as teamId (e.g. /competitie/teams/ckl9x7n/heren/1). Omit season on get_club_teams unless the user asked for a historical year — the default is the current season. Align get_team_results from/to with that season (2026-2027 → dates in 2026-08..2027-06). On TEAM_NOT_FOUND, reload get_club_teams without season and retry with the new sourcePath — do not reuse last year's UUID.
+6. Never claim a team is missing from Nevobo if dataTruncated is true or a matching shortName exists.
+7. Persist the article with create_entry as a draft (omit locale so defaultLocale applies). Prefer content type "post" or "page" when they exist. Do not publish unless asked. There is no write_article_from_source tool.
+8. Use fetch_url only for ordinary public web pages that are not a configured MCP source. Do not use fetch_url as a fallback to invent facts when an MCP source failed.
 
 Website knowledge (ground truth for THIS website — always use it):
 ${knowledge}

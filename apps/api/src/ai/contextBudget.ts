@@ -167,6 +167,7 @@ const COMPACT_ITEM_KEYS = [
   "poule",
   "pouleId",
   "season",
+  "sourcePath",
 ] as const;
 
 function stripSources(value: unknown): unknown {
@@ -229,14 +230,17 @@ function compactItem(value: unknown): unknown {
 }
 
 /** Always-on index so later rows (HR 1) are not dropped when fat rows are sliced. */
-function indexItem(value: unknown): unknown {
+function indexItem(value: unknown, tight = false): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const rec = value as Record<string, unknown>;
+  const keys = tight
+    ? (["shortName", "season", "sourcePath"] as const)
+    : (["shortName", "name", "season", "sourcePath"] as const);
   const out: Record<string, unknown> = {};
-  for (const key of ["id", "shortName", "name"] as const) {
+  for (const key of keys) {
     if (typeof rec[key] === "string" && rec[key]) out[key] = rec[key];
   }
-  return Object.keys(out).length ? out : compactItem(value);
+  return Object.keys(out).length ? out : value;
 }
 
 function replaceItemArray(data: unknown, items: unknown[]): unknown {
@@ -302,20 +306,24 @@ function compactExternalSourceToolResult(
     out = pack(
       {
         ...compactPayload,
-        hint: "Provenance omitted; rows compacted to id/name. Call get_team for one UUID.",
+        hint: "Provenance omitted; rows compacted. Prefer sourcePath as teamId; UUID is season-specific.",
       },
       true,
     );
     if (out.length <= maxChars) return out;
 
-    const directory = items.map(indexItem);
     const directoryHint =
-      "Complete team index (id/shortName/name). Treat HR1 and HR 1 as the same label. Call get_team / get_team_results with the matching id — do not conclude a team is missing.";
-    out = pack(
-      { directory, itemCount: items.length, hint: directoryHint },
-      true,
-    );
-    if (out.length <= maxChars) return out;
+      "Complete team index. Prefer sourcePath as teamId (stable across seasons). Do not reuse a previous-season UUID. Treat HR1 and HR 1 as the same label.";
+    for (const tight of [false, true]) {
+      const directory = items.map((item) => indexItem(item, tight));
+      out = pack(
+        { directory, itemCount: items.length, hint: directoryHint },
+        true,
+      );
+      if (out.length <= maxChars) return out;
+    }
+
+    const directory = items.map((item) => indexItem(item, true));
 
     const keep = Math.max(1, Math.min(directory.length, 80));
     let lo = 1;

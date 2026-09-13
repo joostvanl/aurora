@@ -73,6 +73,10 @@ describe("contextBudget", () => {
       sourceId: `${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-ddddeeeeffff`,
       name: i === 39 ? "VTC Woerden HR 1" : `VTC Woerden DS ${i + 1}`,
       shortName: i === 39 ? "HR 1" : `DS ${i + 1}`,
+      sourcePath:
+        i === 39
+          ? "/competitie/teams/ckl9x7n/heren-recreatief/1"
+          : `/competitie/teams/ckl9x7n/dames/${i + 1}`,
       category: "senior",
       genderCategory: "women",
       teamNumber: i + 1,
@@ -125,6 +129,8 @@ describe("contextBudget", () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.some((row) => row.shortName === "HR 1")).toBe(true);
     expect(out).toContain("HR 1");
+    expect(out).toContain("2026-2027");
+    expect(out).toMatch(/heren-recreatief\/1|sourcePath/);
     expect(out).not.toContain("classification");
     expect(out).not.toContain("api.nevobo.nl");
   });
