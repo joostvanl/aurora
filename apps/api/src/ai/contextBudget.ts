@@ -228,6 +228,17 @@ function compactItem(value: unknown): unknown {
   return Object.keys(out).length ? out : value;
 }
 
+/** Always-on index so later rows (HR 1) are not dropped when fat rows are sliced. */
+function indexItem(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const rec = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of ["id", "shortName", "name"] as const) {
+    if (typeof rec[key] === "string" && rec[key]) out[key] = rec[key];
+  }
+  return Object.keys(out).length ? out : compactItem(value);
+}
+
 function replaceItemArray(data: unknown, items: unknown[]): unknown {
   if (Array.isArray(data)) return items;
   if (!data || typeof data !== "object") return { items };
@@ -297,7 +308,16 @@ function compactExternalSourceToolResult(
     );
     if (out.length <= maxChars) return out;
 
-    const keep = Math.max(1, Math.min(items.length, 40));
+    const directory = items.map(indexItem);
+    const directoryHint =
+      "Complete team index (id/shortName/name). Treat HR1 and HR 1 as the same label. Call get_team / get_team_results with the matching id — do not conclude a team is missing.";
+    out = pack(
+      { directory, itemCount: items.length, hint: directoryHint },
+      true,
+    );
+    if (out.length <= maxChars) return out;
+
+    const keep = Math.max(1, Math.min(directory.length, 80));
     let lo = 1;
     let hi = keep;
     let best = pack(
@@ -306,13 +326,13 @@ function compactExternalSourceToolResult(
     );
     while (lo <= hi) {
       const mid = Math.floor((lo + hi) / 2);
-      const sliced = compactItems.slice(0, mid);
+      const sliced = directory.slice(0, mid);
       const candidate = pack(
         {
-          items: sliced,
+          directory: sliced,
           itemCount: items.length,
           showing: sliced.length,
-          hint: `Showing ${sliced.length} of ${items.length} rows. Call get_team for a specific id.`,
+          hint: `Showing ${sliced.length} of ${items.length} teams in the index. Remaining names were cut for size — do not assume they are absent from Nevobo.`,
         },
         true,
       );

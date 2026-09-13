@@ -71,8 +71,8 @@ describe("contextBudget", () => {
     const teams = Array.from({ length: 40 }, (_, i) => ({
       id: `team:nevobo:${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-ddddeeeeffff`,
       sourceId: `${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-ddddeeeeffff`,
-      name: `VTC Woerden DS ${i + 1}`,
-      shortName: `DS ${i + 1}`,
+      name: i === 39 ? "VTC Woerden HR 1" : `VTC Woerden DS ${i + 1}`,
+      shortName: i === 39 ? "HR 1" : `DS ${i + 1}`,
       category: "senior",
       genderCategory: "women",
       teamNumber: i + 1,
@@ -112,16 +112,19 @@ describe("contextBudget", () => {
       data?: {
         omitted?: boolean;
         reason?: string;
-        data?: Array<{ name?: string }>;
-        items?: Array<{ name?: string }>;
+        data?: Array<{ name?: string; shortName?: string }>;
+        items?: Array<{ name?: string; shortName?: string }>;
+        directory?: Array<{ name?: string; shortName?: string }>;
         itemCount?: number;
       };
     };
     expect(parsed.data?.omitted).not.toBe(true);
     expect(parsed.data?.reason).not.toBe("tool result exceeds context budget");
-    const rows = parsed.data?.data ?? parsed.data?.items ?? [];
+    const rows =
+      parsed.data?.directory ?? parsed.data?.data ?? parsed.data?.items ?? [];
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.some((row) => row.name?.includes("VTC Woerden"))).toBe(true);
+    expect(rows.some((row) => row.shortName === "HR 1")).toBe(true);
+    expect(out).toContain("HR 1");
     expect(out).not.toContain("classification");
     expect(out).not.toContain("api.nevobo.nl");
   });
