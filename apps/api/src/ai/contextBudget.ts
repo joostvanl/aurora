@@ -146,6 +146,198 @@ function compactEntryToolResult(
   return out;
 }
 
+const EXTERNAL_SOURCE_TOOLS = new Set([
+  "call_external_source",
+  "list_external_source_tools",
+]);
+
+const COMPACT_ITEM_KEYS = [
+  "id",
+  "sourceId",
+  "name",
+  "shortName",
+  "slug",
+  "category",
+  "genderCategory",
+  "ageCategory",
+  "teamNumber",
+  "type",
+  "clubId",
+  "teamId",
+  "poule",
+  "pouleId",
+  "season",
+] as const;
+
+function stripSources(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripSources);
+  if (!value || typeof value !== "object") return value;
+  const rec = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(rec)) {
+    if (key === "sources" && Array.isArray(child)) {
+      out.sourcesOmitted = child.length;
+      continue;
+    }
+    out[key] = stripSources(child);
+  }
+  return out;
+}
+
+function findItemArray(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return null;
+  const rec = data as Record<string, unknown>;
+  if (Array.isArray(rec.data)) return rec.data;
+  const nested = rec.data;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const inner = nested as Record<string, unknown>;
+    for (const key of ["items", "teams", "matches"]) {
+      if (Array.isArray(inner[key])) return inner[key] as unknown[];
+    }
+  }
+  for (const key of ["items", "teams", "matches"]) {
+    if (Array.isArray(rec[key])) return rec[key] as unknown[];
+  }
+  return null;
+}
+
+function firstPouleId(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const league = value.find((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    return (item as Record<string, unknown>).type === "league";
+  });
+  const pick = league ?? value[0];
+  if (!pick || typeof pick !== "object" || Array.isArray(pick)) return undefined;
+  const pouleId = (pick as Record<string, unknown>).pouleId;
+  return typeof pouleId === "string" ? pouleId : undefined;
+}
+
+function compactItem(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const rec = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of COMPACT_ITEM_KEYS) {
+    if (rec[key] !== undefined) out[key] = rec[key];
+  }
+  if (out.pouleId === undefined) {
+    const pouleId = firstPouleId(rec.competitions);
+    if (pouleId) out.pouleId = pouleId;
+  }
+  return Object.keys(out).length ? out : value;
+}
+
+function replaceItemArray(data: unknown, items: unknown[]): unknown {
+  if (Array.isArray(data)) return items;
+  if (!data || typeof data !== "object") return { items };
+  const clone = structuredClone(data) as Record<string, unknown>;
+  if (Array.isArray(clone.data)) {
+    clone.data = items;
+    return clone;
+  }
+  const nested = clone.data;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const inner = nested as Record<string, unknown>;
+    for (const key of ["items", "teams", "matches"]) {
+      if (Array.isArray(inner[key])) {
+        inner[key] = items;
+        return clone;
+      }
+    }
+  }
+  for (const key of ["items", "teams", "matches"]) {
+    if (Array.isArray(clone[key])) {
+      clone[key] = items;
+      return clone;
+    }
+  }
+  clone.items = items;
+  return clone;
+}
+
+/**
+ * Keep business rows (teams/clubs) when an MCP envelope overflows the budget.
+ * Provenance `sources` is dropped first — that is what blows Nevobo get_club_teams.
+ */
+function compactExternalSourceToolResult(
+  result: { name: string; ok: boolean; summary: string; data?: unknown; code?: string },
+  maxChars: number,
+): string {
+  const summary = truncateText(result.summary, 240);
+  let data = result.data !== undefined ? stripSources(structuredClone(result.data)) : undefined;
+
+  const pack = (payload: unknown, truncated: boolean) =>
+    JSON.stringify({
+      name: result.name,
+      ok: result.ok,
+      summary,
+      ...(truncated ? { dataTruncated: true as const } : {}),
+      ...(result.code ? { code: result.code } : {}),
+      ...(payload !== undefined ? { data: payload } : {}),
+    });
+
+  let out = pack(data, JSON.stringify(result).length > maxChars);
+  if (out.length <= maxChars) return out;
+
+  const items = findItemArray(data);
+  if (items && items.length > 0) {
+    const compactItems = items.map(compactItem);
+    data = replaceItemArray(data, compactItems);
+    const compactPayload =
+      typeof data === "object" && data && !Array.isArray(data)
+        ? { ...data, itemCount: items.length }
+        : { items: compactItems, itemCount: items.length };
+    out = pack(
+      {
+        ...compactPayload,
+        hint: "Provenance omitted; rows compacted to id/name. Call get_team for one UUID.",
+      },
+      true,
+    );
+    if (out.length <= maxChars) return out;
+
+    const keep = Math.max(1, Math.min(items.length, 40));
+    let lo = 1;
+    let hi = keep;
+    let best = pack(
+      { omitted: true, reason: "tool result exceeds context budget", itemCount: items.length },
+      true,
+    );
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const sliced = compactItems.slice(0, mid);
+      const candidate = pack(
+        {
+          items: sliced,
+          itemCount: items.length,
+          showing: sliced.length,
+          hint: `Showing ${sliced.length} of ${items.length} rows. Call get_team for a specific id.`,
+        },
+        true,
+      );
+      if (candidate.length <= maxChars) {
+        best = candidate;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  if (out.length > maxChars) {
+    return JSON.stringify({
+      name: result.name,
+      ok: result.ok,
+      summary,
+      dataTruncated: true,
+      data: { omitted: true, reason: "tool result exceeds context budget" },
+    });
+  }
+  return out;
+}
+
 function looksLikeEntryData(data: unknown): boolean {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     return false;
@@ -173,6 +365,10 @@ export function truncateToolResultForModel(
 
   const full = JSON.stringify(result);
   if (full.length <= maxChars) return full;
+
+  if (EXTERNAL_SOURCE_TOOLS.has(result.name)) {
+    return compactExternalSourceToolResult(result, maxChars);
+  }
 
   if (result.name === "get_entry" || looksLikeEntryData(result.data)) {
     return compactEntryToolResult(result, maxChars);

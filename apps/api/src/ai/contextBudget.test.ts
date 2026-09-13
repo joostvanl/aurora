@@ -67,6 +67,65 @@ describe("contextBudget", () => {
     );
   });
 
+  it("keeps MCP team rows instead of omitting the whole get_club_teams result", () => {
+    const teams = Array.from({ length: 40 }, (_, i) => ({
+      id: `team:nevobo:${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-ddddeeeeffff`,
+      sourceId: `${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-ddddeeeeffff`,
+      name: `VTC Woerden DS ${i + 1}`,
+      shortName: `DS ${i + 1}`,
+      category: "senior",
+      genderCategory: "women",
+      teamNumber: i + 1,
+      season: "2026-2027",
+      clubId: "club:nevobo:ckl9x7n",
+      competitions: [
+        {
+          id: "competition:nevobo:regio-west/competitie-seniorencompetitie-1",
+          pouleId: `/competitie/poules/regio-west/competitie-seniorencompetitie-1/regio-west-d1h-${i}`,
+          name: "Seniorencompetitie",
+          type: "league",
+          classification: {
+            confidence: "authoritative",
+            method: "explicit_source_field",
+            evidence: ["/competitie/competitietypes/competitie"],
+          },
+        },
+      ],
+    }));
+    const sources = Array.from({ length: 20 }, (_, i) => ({
+      provider: "nevobo",
+      sourceUrl: `https://api.nevobo.nl/competitie/page-${i}`,
+      fetchedAt: "2026-09-13T15:38:15.531Z",
+      parserVersion: "1.0.0",
+    }));
+    const result = {
+      name: "call_external_source",
+      ok: true,
+      summary: "Called get_club_teams on Nevobo MCP",
+      data: { data: teams, sources, schemaVersion: "1.0.0" },
+    };
+    expect(JSON.stringify(result).length).toBeGreaterThan(6_000);
+    const out = truncateToolResultForModel(result, 6_000);
+    expect(out.length).toBeLessThanOrEqual(6_000);
+    const parsed = JSON.parse(out) as {
+      dataTruncated?: boolean;
+      data?: {
+        omitted?: boolean;
+        reason?: string;
+        data?: Array<{ name?: string }>;
+        items?: Array<{ name?: string }>;
+        itemCount?: number;
+      };
+    };
+    expect(parsed.data?.omitted).not.toBe(true);
+    expect(parsed.data?.reason).not.toBe("tool result exceeds context budget");
+    const rows = parsed.data?.data ?? parsed.data?.items ?? [];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((row) => row.name?.includes("VTC Woerden"))).toBe(true);
+    expect(out).not.toContain("classification");
+    expect(out).not.toContain("api.nevobo.nl");
+  });
+
   it("estimates input chars from messages and tools", () => {
     const chars = estimateChatInputChars(
       [{ content: "hello" }, { content: "world" }],

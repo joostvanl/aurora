@@ -115,6 +115,23 @@ describe("external source agent tools (CMS-61 T1–T7, S1)", () => {
     expect(result.data).toBeUndefined();
   });
 
+  it("T5b: remote isError forwards the MCP error payload", async () => {
+    getEnabled.mockResolvedValue(sourceA);
+    callTool.mockResolvedValue({
+      ok: false,
+      error: "CLUB_NOT_FOUND: No club for CKN9X7N",
+      data: { error: { code: "CLUB_NOT_FOUND" } },
+    });
+    const result = await executeAiTool(
+      "call_external_source",
+      { sourceId: "src-a", toolName: "get_club", arguments: { clubId: "CKN9X7N" } },
+      { websiteId: "ws-a", role: "editor" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.summary).toMatch(/CLUB_NOT_FOUND/);
+    expect(result.data).toEqual({ error: { code: "CLUB_NOT_FOUND" } });
+  });
+
   it("T6: url instead of sourceId is rejected", async () => {
     const result = await executeAiTool(
       "call_external_source",

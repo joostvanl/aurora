@@ -34,6 +34,76 @@ function isSafeHeaderName(name: string): boolean {
   return /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(name);
 }
 
+function parseJsonText(text: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed) return text;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+/** Drop bulky MCP provenance (`sources`) so team/club lists fit the agent budget. */
+export function stripMcpProvenance(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripMcpProvenance);
+  if (!value || typeof value !== "object") return value;
+  const rec = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(rec)) {
+    if (key === "sources" && Array.isArray(child)) {
+      out.sourcesOmitted = child.length;
+      continue;
+    }
+    out[key] = stripMcpProvenance(child);
+  }
+  return out;
+}
+
+function mcpContentTexts(result: Record<string, unknown>): string[] {
+  if (!Array.isArray(result.content)) return [];
+  return result.content
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => (item as Record<string, unknown>).text)
+    .filter((text): text is string => typeof text === "string");
+}
+
+/** Unwrap tools/call `content[].text` / structuredContent into business JSON. */
+export function unwrapMcpToolResult(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return result;
+  }
+  const rec = result as Record<string, unknown>;
+  if (rec.structuredContent != null) {
+    return stripMcpProvenance(rec.structuredContent);
+  }
+  const texts = mcpContentTexts(rec);
+  if (texts.length === 1) {
+    return stripMcpProvenance(parseJsonText(texts[0]!));
+  }
+  if (texts.length > 1) {
+    return stripMcpProvenance(texts.map(parseJsonText));
+  }
+  return stripMcpProvenance(result);
+}
+
+function mcpErrorSummary(result: Record<string, unknown>): string {
+  const texts = mcpContentTexts(result);
+  const payload = texts.length === 1 ? parseJsonText(texts[0]!) : texts.join("\n");
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const err = (payload as { error?: { code?: unknown; message?: unknown } }).error;
+    const code = typeof err?.code === "string" ? err.code : "";
+    const message = typeof err?.message === "string" ? err.message : "";
+    if (code || message) {
+      return [code, message].filter(Boolean).join(": ");
+    }
+  }
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.trim().slice(0, 400);
+  }
+  return "Remote MCP tool returned isError";
+}
+
 function compactInputSchema(schema: unknown): Record<string, unknown> | undefined {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return undefined;
@@ -259,7 +329,9 @@ export async function callMcpTool(
   source: McpSourceAuth,
   toolName: string,
   args: Record<string, unknown>,
-): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; data: unknown } | { ok: false; error: string; data?: unknown }
+> {
   try {
     const { body } = await withSession(source, (sessionId) =>
       mcpRpc(
@@ -271,12 +343,16 @@ export async function callMcpTool(
     );
     const result = body.result;
     if (result && typeof result === "object" && !Array.isArray(result)) {
-      const rec = result as { isError?: unknown };
+      const rec = result as Record<string, unknown>;
       if (rec.isError === true) {
-        return { ok: false, error: "Remote MCP tool returned isError" };
+        return {
+          ok: false,
+          error: mcpErrorSummary(rec),
+          data: unwrapMcpToolResult(rec),
+        };
       }
     }
-    return { ok: true, data: result ?? null };
+    return { ok: true, data: unwrapMcpToolResult(result ?? null) };
   } catch (error) {
     return {
       ok: false,

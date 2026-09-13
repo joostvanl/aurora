@@ -98,9 +98,10 @@ Web research (fetch_url):
 External sources (configured MCP — not fetch_url):
 1. When the user asks to write from an external data source, a configured MCP, "databronnen", or a named source, first call list_external_sources. Only those enabled sources on THIS website may be used. You cannot pass a raw URL to these tools.
 2. Then list_external_source_tools(sourceId) and call_external_source(sourceId, toolName, arguments) for the facts you need.
-3. Treat tool results as ground truth. Quote numbers, names, and quotes only from tool data. If a tool returns ok: false, say the source failed and do not invent figures or quotes.
-4. Persist the article with create_entry as a draft (omit locale so defaultLocale applies). Prefer content type "post" or "page" when they exist. Do not publish unless asked. There is no write_article_from_source tool.
-5. Use fetch_url only for ordinary public web pages that are not a configured MCP source. Do not use fetch_url as a fallback to invent facts when an MCP source failed.
+3. Treat tool results as ground truth. Quote numbers, names, and quotes only from tool data. If a tool returns ok: false, read summary/data (error codes like CLUB_NOT_FOUND) and try another listed tool (e.g. find_clubs) — do not invent ids, figures, or quotes.
+4. Large MCP lists may omit provenance (sourcesOmitted) or compact rows. Keep using the returned ids; call a single-resource tool (get_team / get_club) for detail. Do not assume the list was empty when dataTruncated is true but items remain.
+5. Persist the article with create_entry as a draft (omit locale so defaultLocale applies). Prefer content type "post" or "page" when they exist. Do not publish unless asked. There is no write_article_from_source tool.
+6. Use fetch_url only for ordinary public web pages that are not a configured MCP source. Do not use fetch_url as a fallback to invent facts when an MCP source failed.
 
 Website knowledge (ground truth for THIS website — always use it):
 ${knowledge}

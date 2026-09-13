@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callMcpTool, listMcpTools } from "./mcpClient.js";
+import {
+  callMcpTool,
+  listMcpTools,
+  stripMcpProvenance,
+  unwrapMcpToolResult,
+} from "./mcpClient.js";
 
 const source = {
   url: "https://example.com/mcp",
@@ -115,7 +120,90 @@ describe("mcpClient (CMS-61)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await callMcpTool(source, "whoami", {});
+    expect(result).toEqual({
+      ok: false,
+      error: "boom",
+      data: "boom",
+    });
+  });
+
+  it("T5: isError JSON payload is forwarded (CLUB_NOT_FOUND)", async () => {
+    const payload = {
+      error: { code: "CLUB_NOT_FOUND", message: "No club for CKN9X7N" },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          jsonrpc: "2.0",
+          id: 2,
+          result: {
+            isError: true,
+            content: [{ type: "text", text: JSON.stringify(payload) }],
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callMcpTool(source, "get_club", { clubId: "CKN9X7N" });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/isError/);
+    if (!result.ok) {
+      expect(result.error).toBe("CLUB_NOT_FOUND: No club for CKN9X7N");
+      expect(result.data).toEqual(payload);
+    }
+  });
+
+  it("unwraps tools/call text JSON and drops sources", async () => {
+    const envelope = {
+      data: [{ id: "team:1", name: "DS 1" }],
+      sources: [{ sourceUrl: "https://api.example/x" }],
+      schemaVersion: "1.0.0",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 1, result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          jsonrpc: "2.0",
+          id: 2,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(envelope) }],
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callMcpTool(source, "get_club_teams", { clubId: "CKL9X7N" });
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        data: [{ id: "team:1", name: "DS 1" }],
+        sourcesOmitted: 1,
+        schemaVersion: "1.0.0",
+      },
+    });
+  });
+
+  it("stripMcpProvenance / unwrapMcpToolResult are idempotent on business JSON", () => {
+    const raw = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            data: [{ id: "c1", name: "Club" }],
+            sources: [{ a: 1 }, { b: 2 }],
+          }),
+        },
+      ],
+    };
+    expect(unwrapMcpToolResult(raw)).toEqual({
+      data: [{ id: "c1", name: "Club" }],
+      sourcesOmitted: 2,
+    });
+    expect(stripMcpProvenance({ sources: [1, 2, 3], ok: true })).toEqual({
+      sourcesOmitted: 3,
+      ok: true,
+    });
   });
 });

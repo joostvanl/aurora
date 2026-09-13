@@ -18,7 +18,8 @@ describe("CMS-61 prompt and docs (D2)", () => {
     expect(agent).toMatch(/list_external_sources/);
     expect(agent).toMatch(/call_external_source/);
     expect(agent).toMatch(/create_entry as a draft/);
-    expect(agent).toMatch(/do not invent figures or quotes/);
+    expect(agent).toMatch(/do not invent ids, figures, or quotes/);
+    expect(agent).toMatch(/dataTruncated/);
     expect(agent).toMatch(/There is no write_article_from_source tool/);
   });
 

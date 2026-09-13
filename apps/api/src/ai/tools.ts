@@ -2647,7 +2647,12 @@ export async function executeAiTool(
           toolArgs,
         );
         if (!called.ok) {
-          return { name, ok: false, summary: called.error };
+          return {
+            name,
+            ok: false,
+            summary: called.error,
+            ...(called.data !== undefined ? { data: called.data } : {}),
+          };
         }
         return {
           name,
