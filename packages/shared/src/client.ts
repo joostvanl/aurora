@@ -36,6 +36,8 @@ import type {
   AiListModelsRequest,
   AiListModelsResponse,
   AiStatus,
+  ExternalSourcesList,
+  ExternalSourcesPut,
   AuditEvent,
   ContentTypeVersion,
   EntryVersion,
@@ -704,6 +706,22 @@ export class CmsClient {
     return this.request<AiListModelsResponse>(
       "/api/v1/admin/ai/models",
       { method: "POST", body: JSON.stringify(input) },
+      { auth: true },
+    );
+  }
+
+  getExternalSources() {
+    return this.request<ExternalSourcesList>(
+      "/api/v1/admin/ai/external-sources",
+      {},
+      { auth: true },
+    );
+  }
+
+  replaceExternalSources(input: ExternalSourcesPut) {
+    return this.request<ExternalSourcesList>(
+      "/api/v1/admin/ai/external-sources",
+      { method: "PUT", body: JSON.stringify(input) },
       { auth: true },
     );
   }

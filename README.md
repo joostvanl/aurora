@@ -99,6 +99,7 @@ When configured, the AI operator can:
 - Write or optimize copy using **find/replace patches** (`str_replace`) instead of rewriting whole fields
 - Entry editor applies tool results into the form fields immediately
 - **Forms:** create/update/delete forms and fields; inspect the submission inbox (`form_submission_stats`, list/get submissions); summarize insights; mark read or delete submissions
+- **External MCP sources:** admin-configured Streamable HTTP databronnen (Studio-AI is an MCP **client** — not the hosted `/mcp` server). See [docs/ai-external-sources.md](./docs/ai-external-sources.md).
 
 **Versions:** before AI field edits, Aurora stores an entry snapshot (`source: ai`). Restore any version from the entry editor, or save a manual checkpoint. Restoring also snapshots the current state first.
 

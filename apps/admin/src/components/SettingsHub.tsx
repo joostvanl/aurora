@@ -45,6 +45,13 @@ export function SettingsHub() {
       visible: showAi,
     },
     {
+      href: "/data-sources",
+      title: "Databronnen",
+      description:
+        "Externe Streamable HTTP MCP-bronnen die Studio-AI en geplande taken mogen raadplegen.",
+      visible: isAdmin,
+    },
+    {
       href: "/tasks",
       title: "Taken",
       description:

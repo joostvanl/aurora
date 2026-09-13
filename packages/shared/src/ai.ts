@@ -239,3 +239,48 @@ export const AiListModelsResponseSchema = z.object({
 });
 
 export type AiListModelsResponse = z.infer<typeof AiListModelsResponseSchema>;
+
+/** Studio-AI external MCP source (v1: Streamable HTTP only). */
+export const EXTERNAL_SOURCES_MAX = 8;
+export const ExternalSourceTypeSchema = z.literal("mcp_http");
+export type ExternalSourceType = z.infer<typeof ExternalSourceTypeSchema>;
+
+export const ExternalSourcePutItemSchema = z.object({
+  id: z.string().min(1).max(64).optional(),
+  label: z.string().min(1).max(80),
+  type: ExternalSourceTypeSchema.default("mcp_http"),
+  url: z.string().url(),
+  enabled: z.boolean().default(true),
+  authHeaderName: z.string().min(1).max(64).optional(),
+  /** Omit or leave empty to keep the stored secret. */
+  authHeaderValue: z.string().max(4096).optional(),
+  /** Wipe the stored secret. */
+  clearAuth: z.boolean().optional(),
+});
+
+export type ExternalSourcePutItem = z.input<typeof ExternalSourcePutItemSchema>;
+
+export const ExternalSourcesPutSchema = z.object({
+  sources: z.array(ExternalSourcePutItemSchema).max(EXTERNAL_SOURCES_MAX),
+});
+
+export type ExternalSourcesPut = z.input<typeof ExternalSourcesPutSchema>;
+
+export const PublicExternalSourceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  type: ExternalSourceTypeSchema,
+  url: z.string(),
+  enabled: z.boolean(),
+  authHeaderName: z.string(),
+  authConfigured: z.boolean(),
+  authPreview: z.string().nullable(),
+});
+
+export type PublicExternalSource = z.infer<typeof PublicExternalSourceSchema>;
+
+export const ExternalSourcesListSchema = z.object({
+  sources: z.array(PublicExternalSourceSchema).max(EXTERNAL_SOURCES_MAX),
+});
+
+export type ExternalSourcesList = z.infer<typeof ExternalSourcesListSchema>;
