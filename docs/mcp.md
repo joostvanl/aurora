@@ -133,3 +133,4 @@ pnpm --filter @cms/mcp start
 - [public-api.md](./public-api.md) — public read
 - [frontend-playbook.md](./frontend-playbook.md) — frontend agents after schema changes
 - [deploy-raspberry-pi.md](./deploy-raspberry-pi.md) — `/mcp` is served on the existing `aurora-api` hostname
+- [ai-external-sources.md](./ai-external-sources.md) — Studio-AI as MCP **client** (configured Databronnen). Do not confuse with this hosted `/mcp` **server**.

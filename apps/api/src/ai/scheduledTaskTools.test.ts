@@ -12,6 +12,9 @@ describe("scheduled_task tool policy", () => {
     expect(names).toContain("create_entry");
     expect(names).toContain("fetch_url");
     expect(names).toContain("get_current_datetime");
+    expect(names).toContain("list_external_sources");
+    expect(names).toContain("list_external_source_tools");
+    expect(names).toContain("call_external_source");
   });
 
   it("includes publish tools when allowPublish is true", () => {

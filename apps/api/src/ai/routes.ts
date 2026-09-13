@@ -3,11 +3,13 @@ import {
   AiChatRequestSchema,
   AiConfigUpdateSchema,
   AiListModelsRequestSchema,
+  ExternalSourcesPutSchema,
 } from "@cms/shared";
 import { requireWebsite, websiteIdFrom } from "../auth/middleware.js";
 import { RolePermission } from "../auth/roles.js";
 import { runAiChat } from "../ai/agent.js";
 import { resolveAiConfig, toPublicAiStatus, updateAiConfig } from "../ai/config.js";
+import { listPublicSources, replaceExternalSources } from "../ai/externalSources.js";
 import { listProviderModels } from "../ai/openai.js";
 
 export async function registerAiRoutes(app: FastifyInstance) {
@@ -46,6 +48,19 @@ export async function registerAiRoutes(app: FastifyInstance) {
         }
         const models = await listProviderModels({ baseUrl, apiKey });
         return { models };
+      },
+    );
+
+    ai.get("/api/v1/admin/ai/external-sources", async (request) => {
+      return listPublicSources(websiteIdFrom(request));
+    });
+
+    ai.put(
+      "/api/v1/admin/ai/external-sources",
+      { preHandler: requireWebsite(RolePermission.admin) },
+      async (request) => {
+        const body = ExternalSourcesPutSchema.parse(request.body);
+        return replaceExternalSources(websiteIdFrom(request), body);
       },
     );
 

@@ -49,6 +49,8 @@ import {
 import type { JsonEditOp } from "@cms/shared";
 import type { ChatTool } from "./openai.js";
 import { fetchPublicUrl, WebFetchError } from "./webFetch.js";
+import { getEnabledSource, listEnabledSources } from "./externalSources.js";
+import { callMcpTool, listMcpTools, McpClientError } from "./mcpClient.js";
 import { getCurrentDateTime } from "./currentTime.js";
 import { resolveToolDomains, toolDomain } from "./toolScope.js";
 import type { AiChatContext } from "@cms/shared";
@@ -941,6 +943,65 @@ export const aiTools: ChatTool[] = [
           },
         },
         required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_external_sources",
+      description:
+        "List enabled external MCP data sources configured for this website (id, label, type). No URLs or secrets. Use before list_external_source_tools / call_external_source. You cannot pass a raw URL — only these sourceIds.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_external_source_tools",
+      description:
+        "List tools exposed by one enabled external MCP source (name, description, compact inputSchema). Disabled, unknown, or other-website sourceIds return ok:false.",
+      parameters: {
+        type: "object",
+        properties: {
+          sourceId: {
+            type: "string",
+            description: "Id from list_external_sources",
+          },
+        },
+        required: ["sourceId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "call_external_source",
+      description:
+        "Call one tool on an enabled external MCP source. Pass sourceId + toolName + arguments. Do not pass a URL. Treat the result as ground truth; if ok is false, do not invent facts.",
+      parameters: {
+        type: "object",
+        properties: {
+          sourceId: {
+            type: "string",
+            description: "Id from list_external_sources",
+          },
+          toolName: {
+            type: "string",
+            description: "Remote MCP tool name from list_external_source_tools",
+          },
+          arguments: {
+            type: "object",
+            description: "Arguments for the remote tool (object, may be empty)",
+          },
+        },
+        required: ["sourceId", "toolName"],
         additionalProperties: false,
       },
     },
@@ -2489,6 +2550,111 @@ export async function executeAiTool(
           }
           throw error;
         }
+      }
+      case "list_external_sources": {
+        const sources = await listEnabledSources(websiteId);
+        const data = sources.map((s) => ({
+          id: s.id,
+          label: s.label,
+          type: s.type,
+        }));
+        return {
+          name,
+          ok: true,
+          summary:
+            data.length === 0
+              ? "No enabled external sources on this website"
+              : `Listed ${data.length} enabled external source(s)`,
+          data,
+        };
+      }
+      case "list_external_source_tools": {
+        if (asRecord(rawArgs).url !== undefined && !str(rawArgs, "sourceId")) {
+          return {
+            name,
+            ok: false,
+            summary: "Ad-hoc URLs are not allowed; use sourceId from list_external_sources",
+          };
+        }
+        const sourceId = str(rawArgs, "sourceId");
+        if (!sourceId) {
+          return { name, ok: false, summary: "sourceId required" };
+        }
+        const source = await getEnabledSource(websiteId, sourceId);
+        if (!source) {
+          return {
+            name,
+            ok: false,
+            summary: "External source not found or disabled on this website",
+          };
+        }
+        try {
+          const tools = await listMcpTools({
+            url: source.url,
+            authHeaderName: source.authHeaderName,
+            authHeaderValue: source.authHeaderValue,
+          });
+          return {
+            name,
+            ok: true,
+            summary: `Listed ${tools.length} tool(s) on ${source.label}`,
+            data: { sourceId: source.id, tools },
+          };
+        } catch (error) {
+          const message =
+            error instanceof McpClientError || error instanceof WebFetchError
+              ? error.message
+              : "Failed to list tools on the external source";
+          return { name, ok: false, summary: message };
+        }
+      }
+      case "call_external_source": {
+        if (asRecord(rawArgs).url !== undefined && !str(rawArgs, "sourceId")) {
+          return {
+            name,
+            ok: false,
+            summary: "Ad-hoc URLs are not allowed; use sourceId from list_external_sources",
+          };
+        }
+        const sourceId = str(rawArgs, "sourceId");
+        const toolName = str(rawArgs, "toolName");
+        if (!sourceId) {
+          return { name, ok: false, summary: "sourceId required" };
+        }
+        if (!toolName) {
+          return { name, ok: false, summary: "toolName required" };
+        }
+        const source = await getEnabledSource(websiteId, sourceId);
+        if (!source) {
+          return {
+            name,
+            ok: false,
+            summary: "External source not found or disabled on this website",
+          };
+        }
+        const rawToolArgs = asRecord(rawArgs).arguments;
+        const toolArgs =
+          rawToolArgs && typeof rawToolArgs === "object" && !Array.isArray(rawToolArgs)
+            ? (rawToolArgs as Record<string, unknown>)
+            : {};
+        const called = await callMcpTool(
+          {
+            url: source.url,
+            authHeaderName: source.authHeaderName,
+            authHeaderValue: source.authHeaderValue,
+          },
+          toolName,
+          toolArgs,
+        );
+        if (!called.ok) {
+          return { name, ok: false, summary: called.error };
+        }
+        return {
+          name,
+          ok: true,
+          summary: `Called ${toolName} on ${source.label}`,
+          data: called.data,
+        };
       }
       case "list_scheduled_tasks": {
         const items = await prisma.scheduledTask.findMany({

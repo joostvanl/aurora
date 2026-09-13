@@ -16,6 +16,7 @@ These files are seeded into the CMS as content type **`doc`** and published on t
 | [forms.md](./forms.md) | Form builder, submit API, embeds |
 | [management-api.md](./management-api.md) | Write API for agents (tokens, provision, CRUD) |
 | [mcp.md](./mcp.md) | MCP server for Cursor/Claude (hosted HTTP `/mcp`, local stdio) |
+| [ai-external-sources.md](./ai-external-sources.md) | Studio-AI MCP **client** (Databronnen) — not the hosted `/mcp` server |
 | [demo-content-map.md](./demo-content-map.md) | Seeded product-site content map |
 | [frontend-playbook.md](./frontend-playbook.md) | Build a frontend step by step |
 | [typed-client.md](./typed-client.md) | `@cms/shared` client |

@@ -63,7 +63,8 @@ function isBlockedIp(ip: string): boolean {
   return true;
 }
 
-async function assertSafeUrl(raw: string): Promise<URL> {
+/** Shared SSRF gate — also used by Studio-AI MCP client (CMS-61). */
+export async function assertSafeUrl(raw: string): Promise<URL> {
   let url: URL;
   try {
     url = new URL(raw);

@@ -83,6 +83,13 @@ export const DOC_SPECS: Array<{
     sortOrder: 8,
   },
   {
+    slug: "ai-external-sources",
+    title: "Studio-AI external sources",
+    description: "MCP client for configured Databronnen (not hosted /mcp)",
+    file: "ai-external-sources.md",
+    sortOrder: 15,
+  },
+  {
     slug: "demo-content-map",
     title: "Site content map",
     description: "Seeded product-site types and routes",
